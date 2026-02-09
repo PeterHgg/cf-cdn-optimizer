@@ -283,6 +283,22 @@ async function listDnsRecords(zoneId, name, type) {
   }
 }
 
+/**
+ * 删除 DNS 记录
+ */
+async function deleteDnsRecord(zoneId, recordId) {
+  try {
+    const cf = await getClient();
+    await cf.dns.records.delete(recordId, { zone_id: zoneId });
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
 module.exports = {
   createCustomHostname,
   getCustomHostnameStatus,
@@ -292,6 +308,7 @@ module.exports = {
   refreshClient,
   listZones,
   addDnsRecord,
+  deleteDnsRecord,
   listDnsRecords,
   getZoneId
 };

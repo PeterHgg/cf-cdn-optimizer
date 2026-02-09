@@ -218,7 +218,9 @@ router.post('/', async (req, res) => {
 
     res.json({
       success: true,
-      message: '域名配置创建成功 (已自动添加验证记录)',
+      message: aliyunResult.warning
+        ? `域名配置成功，但有警告: ${aliyunResult.warning}`
+        : '域名配置创建成功 (已自动添加验证记录)',
       data: {
         id: result.lastID,
         fullDomain,
@@ -250,6 +252,23 @@ router.delete('/:id', async (req, res) => {
     }
     if (domain.aliyun_record_id_overseas) {
       await aliyunService.deleteDnsRecord(domain.aliyun_record_id_overseas);
+    }
+
+    // 删除 Cloudflare 回退源 DNS 记录 (清理垃圾)
+    if (domain.fallback_origin) {
+       try {
+         const cfZoneId = await cfService.getZoneId();
+         // 查找 A 记录
+         const records = await cfService.listDnsRecords(cfZoneId, domain.fallback_origin, 'A');
+         if (records.success && records.data && records.data.length > 0) {
+           for (const record of records.data) {
+             console.log(`正在删除回退源记录: ${record.name} (ID: ${record.id})`);
+             await cfService.deleteDnsRecord(cfZoneId, record.id);
+           }
+         }
+       } catch (e) {
+         console.warn('删除 Cloudflare 回退源记录失败:', e.message);
+       }
     }
 
     // 从数据库删除
@@ -320,6 +339,54 @@ router.get('/:id/verify', async (req, res) => {
         'UPDATE domain_configs SET status = ? WHERE id = ?',
         [status.sslStatus, req.params.id]
       );
+
+      // 检查并补充验证记录 (自动修复)
+      if (status.status === 'pending' || status.sslStatus === 'pending_validation') {
+         const data = status.data;
+         const rootDomain = domain.root_domain;
+         const addedRecords = [];
+
+         const ensureTxtRecord = async (name, value) => {
+             // 检查是否存在
+             let rr = name;
+             if (rr === rootDomain) {
+               rr = '@';
+             } else if (rr.endsWith(`.${rootDomain}`)) {
+               rr = rr.slice(0, -(rootDomain.length + 1));
+             }
+
+             // 查询现有记录
+             const existing = await aliyunService.listDnsRecords(rootDomain, rr);
+             const exists = existing.success && existing.data && existing.data.some(r => r.Value === value); // 注意阿里云返回可能是 Value
+
+             if (!exists) {
+               console.log(`[自动修复] 补充验证记录: ${rr} -> ${value}`);
+               await aliyunService.addDnsRecord(rootDomain, rr, 'TXT', value);
+               addedRecords.push(rr);
+             }
+         };
+
+         // 1. SSL 验证记录
+         if (data.ssl && data.ssl.validation_records) {
+           for (const record of data.ssl.validation_records) {
+             if (record.type === 'txt') { // 这里 Cloudflare 返回的是 type 小写
+                await ensureTxtRecord(record.name || record.txt_name, record.value || record.txt_value);
+             }
+           }
+         }
+
+         // 2. Ownership 验证记录
+         if (data.ownership_verification) {
+            const ov = data.ownership_verification;
+            if (ov.type === 'txt') {
+               await ensureTxtRecord(ov.name, ov.value);
+            }
+         }
+
+         if (addedRecords.length > 0) {
+           status.message = (status.message || '') + ` (已自动补充 ${addedRecords.length} 条验证记录)`;
+         }
+      }
     }
 
     res.json(status);

@@ -210,9 +210,21 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
         overseasRecordId = overseasRecord.recordId;
       } else {
          console.warn(`添加海外线路解析失败: ${overseasRecord.message}`);
+         return {
+           success: true, // 主流程(国内)成功，返回警告
+           chinaRecordId: chinaRecord.recordId,
+           overseasRecordId: null,
+           warning: `海外线路解析添加失败: ${overseasRecord.message}`
+         };
       }
     } catch (error) {
        console.warn(`添加海外线路解析异常 (可能是免费版不支持): ${error.message}`);
+       return {
+         success: true,
+         chinaRecordId: chinaRecord.recordId,
+         overseasRecordId: null,
+         warning: `海外线路解析添加异常: ${error.message}`
+       };
     }
 
     return {
