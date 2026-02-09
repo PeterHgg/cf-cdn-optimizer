@@ -198,7 +198,6 @@ else
 fi
 
 echo -e "${GREEN}感谢使用 CF-CDN-Optimizer！${NC}"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/cf-cdn-optimizer-linux-x64.tar.gz"
 INSTALL_DIR="$HOME/cf-cdn-optimizer"
 
 echo -e "${BLUE}"
