@@ -145,12 +145,16 @@ async function listCustomHostnames() {
     const cf = await getClient();
     const zoneId = await getZoneId();
 
+    console.log('正在连接 Cloudflare API...');
     const response = await cf.customHostnames.list(zoneId);
+    console.log('Cloudflare API 连接成功');
     return {
       success: true,
       data: response
     };
   } catch (error) {
+    console.error('Cloudflare 连接失败:', error.message);
+    console.error('详细错误:', error);
     return {
       success: false,
       message: error.message
