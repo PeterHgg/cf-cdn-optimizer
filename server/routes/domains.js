@@ -159,7 +159,8 @@ router.post('/', async (req, res) => {
 
     if (cfResult.verificationRecords && cfResult.verificationRecords.length > 0) {
       for (const record of cfResult.verificationRecords) {
-        if (record.type === 'txt') { // 通常是 txt
+        // 兼容大小写 (API 可能返回 TXT 或 txt)
+        if (record.type && record.type.toLowerCase() === 'txt') {
            // 兼容 Cloudflare API 不同版本的返回字段 (txt_name/txt_value vs name/content)
            const txtName = record.name || record.txt_name;
            const txtValue = record.content || record.value || record.txt_value;
@@ -377,8 +378,13 @@ router.get('/:id/verify', async (req, res) => {
          // 1. SSL 验证记录
          if (data.ssl && data.ssl.validation_records) {
            for (const record of data.ssl.validation_records) {
-             if (record.type === 'txt') { // 这里 Cloudflare 返回的是 type 小写
-                await ensureTxtRecord(record.name || record.txt_name, record.value || record.txt_value);
+             // 兼容大小写
+             if (record.type && record.type.toLowerCase() === 'txt') {
+                const txtName = record.name || record.txt_name;
+                const txtValue = record.value || record.txt_value || record.content;
+                if (txtName && txtValue) {
+                  await ensureTxtRecord(txtName, txtValue);
+                }
              }
            }
          }
@@ -386,7 +392,8 @@ router.get('/:id/verify', async (req, res) => {
          // 2. Ownership 验证记录
          if (data.ownership_verification) {
             const ov = data.ownership_verification;
-            if (ov.type === 'txt') {
+            // 兼容大小写
+            if (ov.type && ov.type.toLowerCase() === 'txt') {
                await ensureTxtRecord(ov.name, ov.value);
             }
          }
