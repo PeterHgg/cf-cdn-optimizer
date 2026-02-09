@@ -61,6 +61,10 @@ jobs:
           fi
           cp .env.example release/.env.example
           cp README.md release/README.md
+          cp deploy.sh release/deploy.sh
+          cp uninstall.sh release/uninstall.sh
+          chmod +x release/deploy.sh
+          chmod +x release/uninstall.sh
 
       - name: Create installation script
         run: |
