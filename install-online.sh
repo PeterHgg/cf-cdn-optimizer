@@ -12,7 +12,7 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-VERSION="v0.1.9"
+VERSION="v0.1.10"
 REPO="PeterHgg/cf-cdn-optimizer"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/cf-cdn-optimizer-linux-x64.tar.gz"
 INSTALL_DIR="$HOME/cf-cdn-optimizer"
