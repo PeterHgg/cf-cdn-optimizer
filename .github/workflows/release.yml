@@ -8,23 +8,8 @@ on:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win
-            arch: x64
-            ext: .exe
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
-            ext: ''
-          - os: macos-latest
-            platform: macos
-            arch: x64
-            ext: ''
+    name: Build Linux x64
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -54,36 +39,11 @@ jobs:
       - name: Create distribution directory
         run: |
           mkdir -p release
-          cp dist/cf-cdn-optimizer-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }} release/cf-cdn-optimizer-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}
+          cp dist/cf-cdn-optimizer-linux-x64 release/cf-cdn-optimizer-linux-x64
           cp .env.example release/.env.example
           cp README.md release/README.md
-        shell: bash
 
-      - name: Create installation script (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          echo '@echo off' > release/install.bat
-          echo 'echo =========================================' >> release/install.bat
-          echo 'echo   CF-CDN-Optimizer 安装向导' >> release/install.bat
-          echo 'echo =========================================' >> release/install.bat
-          echo 'echo.' >> release/install.bat
-          echo 'if not exist .env (' >> release/install.bat
-          echo '  copy .env.example .env' >> release/install.bat
-          echo '  echo ✅ 配置文件已创建: .env' >> release/install.bat
-          echo '  echo ⚠️  请编辑 .env 文件，填入您的 API 密钥' >> release/install.bat
-          echo ') else (' >> release/install.bat
-          echo '  echo ✅ 配置文件已存在' >> release/install.bat
-          echo ')' >> release/install.bat
-          echo 'echo.' >> release/install.bat
-          echo 'mkdir data 2>nul' >> release/install.bat
-          echo 'echo ✅ 安装完成！' >> release/install.bat
-          echo 'echo.' >> release/install.bat
-          echo 'echo 启动服务: cf-cdn-optimizer-win-x64.exe' >> release/install.bat
-          echo 'pause' >> release/install.bat
-        shell: bash
-
-      - name: Create installation script (Linux/macOS)
-        if: matrix.os != 'windows-latest'
+      - name: Create installation script
         run: |
           cat > release/install.sh << 'EOF'
           #!/bin/bash
@@ -100,34 +60,23 @@ jobs:
           fi
           echo ""
           mkdir -p data
-          chmod +x cf-cdn-optimizer-${{ matrix.platform }}-${{ matrix.arch }}
+          chmod +x cf-cdn-optimizer-linux-x64
           echo "✅ 安装完成！"
           echo ""
-          echo "启动服务: ./cf-cdn-optimizer-${{ matrix.platform }}-${{ matrix.arch }}"
+          echo "启动服务: ./cf-cdn-optimizer-linux-x64"
           EOF
           chmod +x release/install.sh
 
-      - name: Create archive (Windows)
-        if: matrix.os == 'windows-latest'
+      - name: Create archive
         run: |
           cd release
-          7z a -tzip ../cf-cdn-optimizer-${{ matrix.platform }}-${{ matrix.arch }}.zip *
-        shell: bash
-
-      - name: Create archive (Linux/macOS)
-        if: matrix.os != 'windows-latest'
-        run: |
-          cd release
-          tar -czf ../cf-cdn-optimizer-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz *
+          tar -czf ../cf-cdn-optimizer-linux-x64.tar.gz *
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cf-cdn-optimizer-${{ matrix.platform }}-${{ matrix.arch }}
-          path: |
-            cf-cdn-optimizer-${{ matrix.platform }}-${{ matrix.arch }}.zip
-            cf-cdn-optimizer-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
-          if-no-files-found: ignore
+          name: cf-cdn-optimizer-linux-x64
+          path: cf-cdn-optimizer-linux-x64.tar.gz
 
   release:
     name: Create Release
@@ -150,8 +99,6 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
-          files: |
-            artifacts/**/*.zip
-            artifacts/**/*.tar.gz
+          files: artifacts/**/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
