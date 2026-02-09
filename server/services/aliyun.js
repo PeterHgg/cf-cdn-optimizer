@@ -1,4 +1,12 @@
-const AlidnsClient = require('@alicloud/alidns20150109').default;
+const alidns = require('@alicloud/alidns20150109');
+const AlidnsClient = alidns.default;
+const {
+  AddDomainRecordRequest,
+  UpdateDomainRecordRequest,
+  DeleteDomainRecordRequest,
+  DescribeDomainRecordsRequest,
+  DescribeDomainsRequest
+} = alidns;
 const OpenApi = require('@alicloud/openapi-client');
 const { dbGet } = require('../database/db');
 
@@ -54,7 +62,7 @@ function refreshClient() {
 async function addDnsRecord(domainName, subdomain, recordType, value, line = 'default') {
   try {
     const client = await getClient();
-    const request = new AlidnsClient.AddDomainRecordRequest({
+    const request = new AddDomainRecordRequest({
       domainName: domainName,
       RR: subdomain,
       type: recordType,
@@ -83,7 +91,7 @@ async function addDnsRecord(domainName, subdomain, recordType, value, line = 'de
 async function updateDnsRecord(recordId, RR, recordType, value) {
   try {
     const client = await getClient();
-    const request = new AlidnsClient.UpdateDomainRecordRequest({
+    const request = new UpdateDomainRecordRequest({
       recordId: recordId,
       RR: RR,
       type: recordType,
@@ -107,7 +115,7 @@ async function updateDnsRecord(recordId, RR, recordType, value) {
 async function deleteDnsRecord(recordId) {
   try {
     const client = await getClient();
-    const request = new AlidnsClient.DeleteDomainRecordRequest({
+    const request = new DeleteDomainRecordRequest({
       recordId: recordId
     });
 
@@ -128,7 +136,7 @@ async function deleteDnsRecord(recordId) {
 async function listDnsRecords(domainName, subdomain = null) {
   try {
     const client = await getClient();
-    const request = new AlidnsClient.DescribeDomainRecordsRequest({
+    const request = new DescribeDomainRecordsRequest({
       domainName: domainName,
       RRKeyWord: subdomain
     });
@@ -201,7 +209,7 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
 async function listDomains() {
   try {
     const client = await getClient();
-    const request = new AlidnsClient.DescribeDomainsRequest({
+    const request = new DescribeDomainsRequest({
       pageSize: 100
     });
 
