@@ -197,28 +197,46 @@ echo "📚 完整文档: https://github.com/${REPO}"
 echo "🐛 问题反馈: https://github.com/${REPO}/issues"
 echo ""
 
-# 询问是否立即配置
-read -p "是否现在编辑配置文件? (Y/n): " -n 1 -r
+# 自动启动服务
+echo ""
+read -p "是否立即启动服务? (Y/n): " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-  cd "$INSTALL_DIR"
-  ${EDITOR:-nano} .env
+  if [ -f "$INSTALL_DIR/deploy.sh" ]; then
+    echo -e "${BLUE}运行部署脚本（推荐，包含 systemd 服务）...${NC}"
+    bash "$INSTALL_DIR/deploy.sh"
+  else
+    echo -e "${BLUE}启动服务...${NC}"
+    cd "$INSTALL_DIR"
+    nohup ./cf-cdn-optimizer-linux-x64 > cf-cdn-optimizer.log 2>&1 &
+    sleep 3
 
-  echo ""
-  read -p "配置完成后，是否立即启动服务? (Y/n): " -n 1 -r
-  echo
-  if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-    if [ -f "$INSTALL_DIR/deploy.sh" ]; then
-      echo -e "${BLUE}运行部署脚本...${NC}"
-      bash "$INSTALL_DIR/deploy.sh"
-    else
-      echo -e "${BLUE}启动服务...${NC}"
-      cd "$INSTALL_DIR"
-      nohup ./cf-cdn-optimizer-linux-x64 > cf-cdn-optimizer.log 2>&1 &
-      sleep 2
+    if pgrep -f "cf-cdn-optimizer-linux-x64" > /dev/null; then
       echo -e "${GREEN}✅ 服务已在后台启动${NC}"
-      echo -e "访问: ${GREEN}http://localhost:3000${NC}"
-      echo -e "日志: ${GREEN}tail -f $INSTALL_DIR/cf-cdn-optimizer.log${NC}"
+      echo ""
+      echo -e "${GREEN}=========================================${NC}"
+      echo -e "${GREEN}  🎉 安装完成！请访问 Web 管理界面${NC}"
+      echo -e "${GREEN}=========================================${NC}"
+      echo ""
+      echo -e "📡 访问地址: ${GREEN}http://localhost:3000${NC}"
+      echo ""
+      echo -e "${YELLOW}👤 默认登录信息：${NC}"
+      echo "   用户名: admin"
+      echo "   密码: admin123"
+      echo ""
+      echo -e "${RED}⚠️  首次登录后，请在【设置】页面配置 API 密钥：${NC}"
+      echo "   - Cloudflare API Token"
+      echo "   - Cloudflare Account ID"
+      echo "   - Cloudflare Zone ID"
+      echo "   - 阿里云 Access Key ID"
+      echo "   - 阿里云 Access Key Secret"
+      echo ""
+      echo -e "📋 查看日志: ${GREEN}tail -f $INSTALL_DIR/cf-cdn-optimizer.log${NC}"
+      echo -e "🛑 停止服务: ${YELLOW}pkill -f cf-cdn-optimizer-linux-x64${NC}"
+      echo -e "🔄 重启服务: ${YELLOW}$INSTALL_DIR/cf-cdn-optimizer-linux-x64 &${NC}"
+    else
+      echo -e "${RED}❌ 服务启动失败，请查看日志${NC}"
+      echo -e "日志文件: $INSTALL_DIR/cf-cdn-optimizer.log"
     fi
   fi
 fi
