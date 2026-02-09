@@ -184,53 +184,51 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
       }
     }
 
-    // 添加中国大陆解析
-    const chinaType = detectRecordType(chinaValue);
-    const chinaRecord = await addDnsRecord(
+    // 添加默认解析 (解析到回退源，作为兜底/海外)
+    // 用户反馈：需要默认地区解析到回退源
+    const overseasType = detectRecordType(overseasValue);
+    console.log(`添加默认解析 (回退源): ${overseasValue} (${overseasType})`);
+    const defaultRecord = await addDnsRecord(
       domainName,
       subdomain,
-      chinaType,
-      chinaValue,
-      'default' // 中国大陆线路
+      overseasType,
+      overseasValue,
+      'default'
     );
 
-    // 添加海外解析
-    let overseasRecordId = null;
-    try {
-      const overseasType = detectRecordType(overseasValue);
-      const overseasRecord = await addDnsRecord(
-        domainName,
-        subdomain,
-        overseasType,
-        overseasValue,
-        'overseas' // 海外线路
-      );
+    // 添加中国三大运营商解析 (解析到优选 IP/域名)
+    // 用户反馈：中国地区解析到优选域名。由于免费版不支持单一的"中国"线路，这里使用三大运营商代替
+    const chinaType = detectRecordType(chinaValue);
+    const chinaLines = ['telecom', 'unicom', 'mobile'];
+    const chinaRecordIds = [];
 
-      if (overseasRecord.success) {
-        overseasRecordId = overseasRecord.recordId;
-      } else {
-         console.warn(`添加海外线路解析失败: ${overseasRecord.message}`);
-         return {
-           success: true, // 主流程(国内)成功，返回警告
-           chinaRecordId: chinaRecord.recordId,
-           overseasRecordId: null,
-           warning: `海外线路解析添加失败: ${overseasRecord.message}`
-         };
+    console.log(`添加中国地区解析 (优选): ${chinaValue} (${chinaType})`);
+
+    for (const line of chinaLines) {
+      try {
+        const result = await addDnsRecord(
+          domainName,
+          subdomain,
+          chinaType,
+          chinaValue,
+          line
+        );
+        if (result.success) {
+          chinaRecordIds.push(result.recordId);
+        } else {
+          console.warn(`添加 ${line} 线路失败: ${result.message}`);
+        }
+      } catch (error) {
+        console.warn(`添加 ${line} 线路异常: ${error.message}`);
       }
-    } catch (error) {
-       console.warn(`添加海外线路解析异常 (可能是免费版不支持): ${error.message}`);
-       return {
-         success: true,
-         chinaRecordId: chinaRecord.recordId,
-         overseasRecordId: null,
-         warning: `海外线路解析添加异常: ${error.message}`
-       };
     }
 
     return {
       success: true,
-      chinaRecordId: chinaRecord.recordId,
-      overseasRecordId: overseasRecordId
+      // 返回第一个成功的 ID 作为 chinaRecordId (数据库只存了一个字段，兼容旧结构)
+      chinaRecordId: chinaRecordIds.length > 0 ? chinaRecordIds[0] : null,
+      overseasRecordId: defaultRecord.recordId, // 这里的 overseasRecordId 实际上存的是默认(回退)记录的 ID
+      warning: chinaRecordIds.length === 0 ? '中国地区(运营商)解析添加失败' : null
     };
   } catch (error) {
     return {
