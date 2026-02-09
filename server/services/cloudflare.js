@@ -148,6 +148,7 @@ async function listCustomHostnames() {
     const cf = await getClient();
     const zoneId = await getZoneId();
 
+    console.log('使用 Zone ID:', zoneId, '类型:', typeof zoneId);
     console.log('正在连接 Cloudflare API...');
     const response = await cf.customHostnames.list(zoneId);
     console.log('Cloudflare API 连接成功');
