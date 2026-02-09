@@ -259,6 +259,29 @@ async function addDnsRecord(zoneId, type, name, content, proxied = false) {
   }
 }
 
+/**
+ * 列出 DNS 记录
+ */
+async function listDnsRecords(zoneId, name, type) {
+  try {
+    const cf = await getClient();
+    const params = { zone_id: zoneId };
+    if (name) params.name = name;
+    if (type) params.type = type;
+
+    const response = await cf.dns.records.list(params);
+    return {
+      success: true,
+      data: response.result
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
 module.exports = {
   createCustomHostname,
   getCustomHostnameStatus,
@@ -268,5 +291,6 @@ module.exports = {
   refreshClient,
   listZones,
   addDnsRecord,
+  listDnsRecords,
   getZoneId
 };

@@ -33,6 +33,16 @@ router.get('/aliyun-domains', async (req, res) => {
   }
 });
 
+// 获取 Cloudflare Zone 列表
+router.get('/cf-zones', async (req, res) => {
+  try {
+    const result = await cfService.listZones();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 获取所有域名配置
 router.get('/', async (req, res) => {
   try {
@@ -67,18 +77,46 @@ router.get('/:id', async (req, res) => {
 // 创建新的域名配置
 router.post('/', async (req, res) => {
   try {
-    const { subdomain, rootDomain, fallbackOrigin, optimizedIp } = req.body;
+    const { subdomain, rootDomain, fallbackSubdomain, fallbackRootDomain, optimizedIp } = req.body;
 
-    if (!subdomain || !rootDomain || !fallbackOrigin) {
+    if (!subdomain || !rootDomain || !fallbackSubdomain || !fallbackRootDomain) {
       return res.status(400).json({
         success: false,
-        message: '子域名、根域名和回退源不能为空'
+        message: '子域名、根域名、回退源子域名和回退源根域名不能为空'
       });
     }
 
     const fullDomain = `${subdomain}.${rootDomain}`;
+    const fallbackOrigin = `${fallbackSubdomain}.${fallbackRootDomain}`;
 
-    // 0. 获取公网 IP
+    // 0. Pre-flight Checks (检查记录是否已存在)
+
+    // 检查 Aliyun 记录
+    const aliyunCheck = await aliyunService.listDnsRecords(rootDomain, subdomain);
+    if (aliyunCheck.success && aliyunCheck.data && aliyunCheck.data.length > 0) {
+      // 检查是否存在完全匹配的 RR
+      const exists = aliyunCheck.data.some(r => r.RR === subdomain);
+      if (exists) {
+        return res.status(409).json({
+          success: false,
+          message: `阿里云 DNS 记录已存在: ${fullDomain}`
+        });
+      }
+    }
+
+    // 检查 Cloudflare 记录
+    const cfZoneId = await cfService.getZoneId();
+    // 确保 fallbackRootDomain 匹配当前配置的 Zone ID (简单检查：我们假设用户选择的 rootDomain 都在同一个 Zone 下，
+    // 或者 cfService 能够处理。这里我们主要检查 fallbackOrigin A 记录)
+    const cfCheck = await cfService.listDnsRecords(cfZoneId, fallbackOrigin, 'A');
+    if (cfCheck.success && cfCheck.data && cfCheck.data.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Cloudflare DNS 记录已存在: ${fallbackOrigin}`
+      });
+    }
+
+    // 0.5 获取公网 IP
     const publicIp = await getPublicIp();
     console.log(`服务器公网 IP: ${publicIp}`);
 
@@ -86,7 +124,7 @@ router.post('/', async (req, res) => {
     // 假设 fallbackOrigin 是完整域名，我们需要提取主机名
     // 注意：这里假设 fallbackOrigin 属于配置的 CF Zone
     // 如果 fallbackOrigin 已经在其他地方配置过，这一步可能会更新它的 IP
-    const cfZoneId = await cfService.getZoneId();
+    // const cfZoneId = await cfService.getZoneId(); // Already fetched above
     await cfService.addDnsRecord(cfZoneId, 'A', fallbackOrigin, publicIp, true); // proxied: true
 
     // 2. 在 Cloudflare 创建自定义主机名

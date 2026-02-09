@@ -40,22 +40,48 @@
     <!-- 添加域名对话框 -->
     <el-dialog v-model="showAddDialog" title="添加域名配置" width="600px">
       <el-form :model="domainForm" label-width="120px">
-        <el-form-item label="子域名">
-          <el-input v-model="domainForm.subdomain" placeholder="例如: cdn" />
+        <el-form-item label="阿里云域名" required>
+          <el-row :gutter="10" style="width: 100%">
+            <el-col :span="10">
+              <el-input v-model="domainForm.subdomain" placeholder="子域名 (如: cdn)" />
+            </el-col>
+            <el-col :span="2" style="text-align: center; line-height: 32px">
+              .
+            </el-col>
+            <el-col :span="12">
+              <el-select v-model="domainForm.rootDomain" placeholder="选择根域名" filterable style="width: 100%">
+                <el-option
+                  v-for="domain in aliyunDomains"
+                  :key="domain.domainId"
+                  :label="domain.domainName"
+                  :value="domain.domainName"
+                />
+              </el-select>
+            </el-col>
+          </el-row>
         </el-form-item>
-        <el-form-item label="根域名">
-          <el-select v-model="domainForm.rootDomain" placeholder="选择根域名" filterable style="width: 100%">
-            <el-option
-              v-for="domain in aliyunDomains"
-              :key="domain.domainId"
-              :label="domain.domainName"
-              :value="domain.domainName"
-            />
-          </el-select>
+
+        <el-form-item label="CF 回退源" required>
+          <el-row :gutter="10" style="width: 100%">
+            <el-col :span="10">
+              <el-input v-model="domainForm.fallbackSubdomain" placeholder="回退子域名 (如: back)" />
+            </el-col>
+            <el-col :span="2" style="text-align: center; line-height: 32px">
+              .
+            </el-col>
+            <el-col :span="12">
+              <el-select v-model="domainForm.fallbackRootDomain" placeholder="选择 CF 根域名" filterable style="width: 100%">
+                <el-option
+                  v-for="zone in cfZones"
+                  :key="zone.id"
+                  :label="zone.name"
+                  :value="zone.name"
+                />
+              </el-select>
+            </el-col>
+          </el-row>
         </el-form-item>
-        <el-form-item label="回退源">
-          <el-input v-model="domainForm.fallbackOrigin" placeholder="例如: back.abc.xyz" />
-        </el-form-item>
+
         <el-form-item label="优选 IP">
           <el-select v-model="domainForm.optimizedIp" placeholder="选择优选 IP（可选）" clearable style="width: 100%">
             <el-option
@@ -142,6 +168,7 @@ import api from '@/api'
 
 const domains = ref([])
 const aliyunDomains = ref([])
+const cfZones = ref([])
 const optimizedIps = ref([])
 const loading = ref(false)
 const submitting = ref(false)
@@ -153,7 +180,8 @@ const currentDomain = ref(null)
 const domainForm = ref({
   subdomain: '',
   rootDomain: '',
-  fallbackOrigin: '',
+  fallbackSubdomain: '',
+  fallbackRootDomain: '',
   optimizedIp: ''
 })
 
@@ -221,8 +249,20 @@ async function loadAliyunDomains() {
   }
 }
 
+async function loadCfZones() {
+  try {
+    const res = await api.get('/domains/cf-zones')
+    if (res.data.success) {
+      cfZones.value = res.data.data
+    }
+  } catch (error) {
+    console.error('加载 CF Zones 失败:', error)
+  }
+}
+
 async function addDomain() {
-  if (!domainForm.value.subdomain || !domainForm.value.rootDomain || !domainForm.value.fallbackOrigin) {
+  if (!domainForm.value.subdomain || !domainForm.value.rootDomain ||
+      !domainForm.value.fallbackSubdomain || !domainForm.value.fallbackRootDomain) {
     ElMessage.warning('请填写完整信息')
     return
   }
@@ -233,7 +273,13 @@ async function addDomain() {
     if (res.data.success) {
       ElMessage.success('域名配置创建成功')
       showAddDialog.value = false
-      domainForm.value = { subdomain: '', rootDomain: '', fallbackOrigin: '', optimizedIp: '' }
+      domainForm.value = {
+        subdomain: '',
+        rootDomain: '',
+        fallbackSubdomain: '',
+        fallbackRootDomain: '',
+        optimizedIp: ''
+      }
       loadDomains()
 
       if (res.data.data.verificationRecords) {
@@ -246,6 +292,12 @@ async function addDomain() {
     }
   } catch (error) {
     console.error('添加域名失败:', error)
+    // Display backend error message (e.g., DNS record already exists)
+    if (error.response && error.response.data && error.response.data.message) {
+      ElMessage.error(error.response.data.message)
+    } else {
+      ElMessage.error('添加域名失败，请重试')
+    }
   } finally {
     submitting.value = false
   }
@@ -332,6 +384,7 @@ onMounted(() => {
   loadDomains()
   loadOptimizedIps()
   loadAliyunDomains()
+  loadCfZones()
 })
 </script>
 
