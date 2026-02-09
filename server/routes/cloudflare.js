@@ -13,6 +13,16 @@ router.get('/custom-hostnames', async (req, res) => {
   }
 });
 
+// 列出所有区域 (域名)
+router.get('/zones', async (req, res) => {
+  try {
+    const result = await cfService.listZones();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 测试 Cloudflare 连接
 router.get('/test-connection', async (req, res) => {
   try {

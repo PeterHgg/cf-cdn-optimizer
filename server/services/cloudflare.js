@@ -211,11 +211,62 @@ async function createOriginRule(hostname, port) {
   }
 }
 
+/**
+ * 列出所有区域 (域名)
+ */
+async function listZones() {
+  try {
+    const cf = await getClient();
+    const response = await cf.zones.list();
+    return {
+      success: true,
+      data: response.result
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+/**
+ * 添加 DNS 记录
+ */
+async function addDnsRecord(zoneId, type, name, content, proxied = false) {
+  try {
+    const cf = await getClient();
+    const response = await cf.dns.records.create({
+      zone_id: zoneId,
+      type: type,
+      name: name,
+      content: content,
+      proxied: proxied
+    });
+    return {
+      success: true,
+      data: response
+    };
+  } catch (error) {
+    // 如果记录已存在，尝试忽略错误或返回特定状态
+    if (error.message && error.message.includes('Record already exists')) {
+      return { success: true, message: 'Record already exists', existing: true };
+    }
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
 module.exports = {
   createCustomHostname,
   getCustomHostnameStatus,
   deleteCustomHostname,
   listCustomHostnames,
   createOriginRule,
-  refreshClient
+  refreshClient,
+  listZones,
+  addDnsRecord,
+  getZoneId
 };

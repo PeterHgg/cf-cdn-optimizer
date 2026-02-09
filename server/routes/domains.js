@@ -3,7 +3,35 @@ const { dbRun, dbGet, dbAll } = require('../database/db');
 const cfService = require('../services/cloudflare');
 const aliyunService = require('../services/aliyun');
 
+const axios = require('axios');
 const router = express.Router();
+
+// 获取服务器公网 IP
+async function getPublicIp() {
+  try {
+    const response = await axios.get('https://api.ipify.org?format=json');
+    return response.data.ip;
+  } catch (error) {
+    console.error('获取公网 IP 失败:', error.message);
+    // 尝试备用服务
+    try {
+      const response = await axios.get('http://ip-api.com/json');
+      return response.data.query;
+    } catch (e) {
+      throw new Error('无法获取服务器公网 IP');
+    }
+  }
+}
+
+// 获取阿里云域名列表
+router.get('/aliyun-domains', async (req, res) => {
+  try {
+    const result = await aliyunService.listDomains();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // 获取所有域名配置
 router.get('/', async (req, res) => {
@@ -50,7 +78,18 @@ router.post('/', async (req, res) => {
 
     const fullDomain = `${subdomain}.${rootDomain}`;
 
-    // 1. 在 Cloudflare 创建自定义主机名
+    // 0. 获取公网 IP
+    const publicIp = await getPublicIp();
+    console.log(`服务器公网 IP: ${publicIp}`);
+
+    // 1. 在 Cloudflare 创建/更新回退源的 A 记录
+    // 假设 fallbackOrigin 是完整域名，我们需要提取主机名
+    // 注意：这里假设 fallbackOrigin 属于配置的 CF Zone
+    // 如果 fallbackOrigin 已经在其他地方配置过，这一步可能会更新它的 IP
+    const cfZoneId = await cfService.getZoneId();
+    await cfService.addDnsRecord(cfZoneId, 'A', fallbackOrigin, publicIp, true); // proxied: true
+
+    // 2. 在 Cloudflare 创建自定义主机名
     const cfResult = await cfService.createCustomHostname(fullDomain, fallbackOrigin);
 
     if (!cfResult.success) {
@@ -60,7 +99,30 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // 2. 获取优选 IP（如果未指定，使用默认的第一个）
+    // 3. 自动添加阿里云验证记录 (TXT)
+    if (cfResult.verificationRecords && cfResult.verificationRecords.length > 0) {
+      for (const record of cfResult.verificationRecords) {
+        if (record.type === 'txt') { // 通常是 txt
+             // record.name 是完整域名 (e.g., _cf-custom-hostname.sub.example.com)
+             // 我们需要提取 RR (主机记录)
+             // 简单的处理方式：从 record.name 中移除 rootDomain
+             let rr = record.name;
+             if (rr.endsWith(`.${rootDomain}`)) {
+               rr = rr.slice(0, -(rootDomain.length + 1));
+             }
+
+             console.log(`正在添加验证记录: ${rr} TXT ${record.content}`);
+             await aliyunService.addDnsRecord(
+               rootDomain,
+               rr,
+               'TXT',
+               record.content
+             );
+        }
+      }
+    }
+
+    // 4. 获取优选 IP（如果未指定，使用默认的第一个）
     let selectedIp = optimizedIp;
     if (!selectedIp) {
       const defaultIp = await dbGet(
@@ -69,7 +131,7 @@ router.post('/', async (req, res) => {
       selectedIp = defaultIp ? defaultIp.ip_or_domain : fallbackOrigin;
     }
 
-    // 3. 在阿里云配置分地区 DNS 解析
+    // 5. 在阿里云配置分地区 DNS 解析
     const aliyunResult = await aliyunService.setupGeoDns(
       rootDomain,
       subdomain,
@@ -86,7 +148,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // 4. 保存到数据库
+    // 6. 保存到数据库
     const result = await dbRun(`
       INSERT INTO domain_configs
       (subdomain, root_domain, fallback_origin, cf_custom_hostname_id,
@@ -100,12 +162,12 @@ router.post('/', async (req, res) => {
       aliyunResult.chinaRecordId,
       aliyunResult.overseasRecordId,
       selectedIp,
-      'active'
+      'pending' // 初始状态设为 pending，因为可能还需要验证
     ]);
 
     res.json({
       success: true,
-      message: '域名配置创建成功',
+      message: '域名配置创建成功 (已自动添加验证记录)',
       data: {
         id: result.lastID,
         fullDomain,

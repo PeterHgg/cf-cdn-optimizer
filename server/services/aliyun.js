@@ -195,11 +195,36 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
   }
 }
 
+/**
+ * 获取账户下的域名列表
+ */
+async function listDomains() {
+  try {
+    const client = await getClient();
+    const request = new AlidnsClient.DescribeDomainsRequest({
+      pageSize: 100
+    });
+
+    const response = await client.describeDomains(request);
+
+    return {
+      success: true,
+      data: response.body.domains.domain
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
 module.exports = {
   addDnsRecord,
   updateDnsRecord,
   deleteDnsRecord,
   listDnsRecords,
   setupGeoDns,
-  refreshClient
+  refreshClient,
+  listDomains
 };

@@ -44,7 +44,14 @@
           <el-input v-model="domainForm.subdomain" placeholder="例如: cdn" />
         </el-form-item>
         <el-form-item label="根域名">
-          <el-input v-model="domainForm.rootDomain" placeholder="例如: 123.xyz" />
+          <el-select v-model="domainForm.rootDomain" placeholder="选择根域名" filterable style="width: 100%">
+            <el-option
+              v-for="domain in aliyunDomains"
+              :key="domain.DomainId"
+              :label="domain.DomainName"
+              :value="domain.DomainName"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="回退源">
           <el-input v-model="domainForm.fallbackOrigin" placeholder="例如: back.abc.xyz" />
@@ -134,6 +141,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 
 const domains = ref([])
+const aliyunDomains = ref([])
 const optimizedIps = ref([])
 const loading = ref(false)
 const submitting = ref(false)
@@ -195,6 +203,17 @@ async function loadOptimizedIps() {
     }
   } catch (error) {
     console.error('加载优选 IP 失败:', error)
+  }
+}
+
+async function loadAliyunDomains() {
+  try {
+    const res = await api.get('/domains/aliyun-domains')
+    if (res.data.success) {
+      aliyunDomains.value = res.data.data
+    }
+  } catch (error) {
+    console.error('加载阿里云域名失败:', error)
   }
 }
 
@@ -308,6 +327,7 @@ async function deleteOriginRule(rule) {
 onMounted(() => {
   loadDomains()
   loadOptimizedIps()
+  loadAliyunDomains()
 })
 </script>
 
