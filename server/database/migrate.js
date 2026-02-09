@@ -96,12 +96,21 @@ async function migrate() {
     console.log('✅ 数据库迁移完成！');
     console.log('📝 默认管理员账户: admin / admin123');
     console.log('⚠️  请登录后立即修改密码！');
-
-    process.exit(0);
   } catch (err) {
     console.error('❌ 数据库迁移失败:', err.message);
-    process.exit(1);
+    throw err;
   }
 }
 
-migrate();
+// 只在直接运行时执行迁移并退出
+if (require.main === module) {
+  migrate().then(() => {
+    process.exit(0);
+  }).catch((err) => {
+    console.error('❌ 迁移失败:', err.message);
+    process.exit(1);
+  });
+} else {
+  // 被 require 时只执行迁移，不退出进程
+  migrate();
+}
