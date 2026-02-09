@@ -160,7 +160,15 @@ router.post('/', async (req, res) => {
     if (cfResult.verificationRecords && cfResult.verificationRecords.length > 0) {
       for (const record of cfResult.verificationRecords) {
         if (record.type === 'txt') { // 通常是 txt
-           await addTxtRecord(record.name, record.content);
+           // 兼容 Cloudflare API 不同版本的返回字段 (txt_name/txt_value vs name/content)
+           const txtName = record.name || record.txt_name;
+           const txtValue = record.content || record.value || record.txt_value;
+
+           if (txtName && txtValue) {
+             await addTxtRecord(txtName, txtValue);
+           } else {
+             console.warn('无法解析 SSL 验证记录字段:', record);
+           }
         }
       }
     }
