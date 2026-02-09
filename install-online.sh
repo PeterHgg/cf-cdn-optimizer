@@ -395,6 +395,9 @@ main() {
 
   echo ""
   echo -e "${GREEN}感谢使用 CF-CDN-Optimizer！${NC}"
+
+  # 明确退出，避免挂起
+  exit 0
 }
 
 main
