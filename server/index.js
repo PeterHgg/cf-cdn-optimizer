@@ -41,8 +41,8 @@ initDatabase().then(() => {
   app.use(bodyParser.json());
   app.use(bodyParser.urlencoded({ extended: true }));
 
-  // 静态文件服务 - 使用 process.cwd() 因为 pkg 打包后 __dirname 是只读的
-  app.use(express.static(path.join(process.cwd(), 'client/dist')));
+  // 静态文件服务 - 前端文件打包在可执行文件内，使用 __dirname
+  app.use(express.static(path.join(__dirname, '../client/dist')));
 
   // API 路由
   app.use('/api/auth', require('./routes/auth'));
@@ -52,9 +52,9 @@ initDatabase().then(() => {
   app.use('/api/optimized-ips', require('./routes/optimizedIps'));
   app.use('/api/settings', require('./routes/settings'));
 
-  // 前端路由
+  // 前端路由 - 前端文件打包在可执行文件内，使用 __dirname
   app.get('*', (req, res) => {
-    res.sendFile(path.join(process.cwd(), 'client/dist/index.html'));
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
   });
 
   // 错误处理
