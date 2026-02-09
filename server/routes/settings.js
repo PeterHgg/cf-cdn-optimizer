@@ -1,5 +1,7 @@
 const express = require('express');
 const { dbRun, dbGet, dbAll } = require('../database/db');
+const cfService = require('../services/cloudflare');
+const aliyunService = require('../services/aliyun');
 
 const router = express.Router();
 
@@ -59,6 +61,11 @@ router.put('/batch', async (req, res) => {
         VALUES (?, ?, CURRENT_TIMESTAMP)
       `, [key, value]);
     }
+
+    // 刷新服务缓存，使新配置生效
+    cfService.refreshClient();
+    aliyunService.refreshClient();
+    console.log('配置已保存，缓存已刷新');
 
     res.json({ success: true, message: '设置已保存' });
   } catch (error) {
