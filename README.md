@@ -44,16 +44,43 @@
 
 ## 🚀 快速开始
 
-### 方式一：下载预编译可执行文件（推荐）
+### ⚡ 一键安装（最简单）
 
-**适合普通用户，无需安装 Node.js**
+**一行命令完成安装，无需手动下载：**
 
-1. 前往 [Releases 页面](https://github.com/PeterHgg/cf-cdn-optimizer/releases) 下载对应系统的压缩包
-2. 解压并运行安装脚本
-3. 配置 `.env` 文件
-4. 启动可执行文件
+```bash
+curl -fsSL https://raw.githubusercontent.com/PeterHgg/cf-cdn-optimizer/master/install-online.sh | bash
+```
 
-详细步骤请查看：[二进制文件安装指南](docs/BINARY_INSTALL.md)
+或使用 wget：
+
+```bash
+wget -qO- https://raw.githubusercontent.com/PeterHgg/cf-cdn-optimizer/master/install-online.sh | bash
+```
+
+脚本会自动：
+- ✅ 检查系统环境
+- ✅ 下载最新 Release
+- ✅ 解压到 `~/cf-cdn-optimizer`
+- ✅ 创建配置文件
+- ✅ 引导您完成配置和启动
+
+---
+
+### 方式一：下载预编译可执行文件
+
+**适合需要离线安装的用户**
+
+1. 前往 [Releases 页面](https://github.com/PeterHgg/cf-cdn-optimizer/releases) 下载压缩包
+2. 解压并运行部署脚本：
+
+```bash
+tar -xzf cf-cdn-optimizer-linux-x64.tar.gz
+cd cf-cdn-optimizer-linux-x64
+./deploy.sh
+```
+
+详细步骤：[二进制文件安装指南](docs/BINARY_INSTALL.md)
 
 ### 方式二：从源码安装
 
