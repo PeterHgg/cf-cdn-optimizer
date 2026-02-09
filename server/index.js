@@ -2,47 +2,80 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 中间件
-app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// 自动初始化数据库
+async function initDatabase() {
+  const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '../data/database.sqlite');
+  const dbDir = path.dirname(dbPath);
 
-// 静态文件服务
-app.use(express.static(path.join(__dirname, '../client/dist')));
+  // 确保数据目录存在
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+    console.log('📁 数据目录已创建');
+  }
 
-// API 路由
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/domains', require('./routes/domains'));
-app.use('/api/cloudflare', require('./routes/cloudflare'));
-app.use('/api/aliyun', require('./routes/aliyun'));
-app.use('/api/optimized-ips', require('./routes/optimizedIps'));
-app.use('/api/settings', require('./routes/settings'));
+  // 检查数据库是否存在
+  if (!fs.existsSync(dbPath)) {
+    console.log('🔄 首次启动，正在初始化数据库...');
+    try {
+      require('./database/migrate');
+      // 等待迁移完成
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('✅ 数据库初始化完成');
+    } catch (error) {
+      console.error('❌ 数据库初始化失败:', error.message);
+    }
+  }
+}
 
-// 前端路由
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/dist/index.html'));
-});
+// 初始化数据库后再启动服务器
+initDatabase().then(() => {
+  // 中间件
+  app.use(cors());
+  app.use(bodyParser.json());
+  app.use(bodyParser.urlencoded({ extended: true }));
 
-// 错误处理
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    message: err.message || '服务器内部错误'
+  // 静态文件服务
+  app.use(express.static(path.join(__dirname, '../client/dist')));
+
+  // API 路由
+  app.use('/api/auth', require('./routes/auth'));
+  app.use('/api/domains', require('./routes/domains'));
+  app.use('/api/cloudflare', require('./routes/cloudflare'));
+  app.use('/api/aliyun', require('./routes/aliyun'));
+  app.use('/api/optimized-ips', require('./routes/optimizedIps'));
+  app.use('/api/settings', require('./routes/settings'));
+
+  // 前端路由
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
   });
-});
 
-// 启动服务器
-app.listen(PORT, () => {
-  console.log(`🚀 CF-CDN-Optimizer 服务已启动`);
-  console.log(`📡 服务地址: http://localhost:${PORT}`);
-  console.log(`🌍 环境: ${process.env.NODE_ENV || 'development'}`);
-});
+  // 错误处理
+  app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({
+      success: false,
+      message: err.message || '服务器内部错误'
+    });
+  });
 
-// 启动定时任务
-require('./tasks/ipUpdater');
+  // 启动服务器
+  app.listen(PORT, () => {
+    console.log(`🚀 CF-CDN-Optimizer 服务已启动`);
+    console.log(`📡 服务地址: http://localhost:${PORT}`);
+    console.log(`🌍 环境: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`👤 默认账户: admin / admin123`);
+  });
+
+  // 启动定时任务
+  require('./tasks/ipUpdater');
+}).catch(error => {
+  console.error('❌ 服务启动失败:', error);
+  process.exit(1);
+});
