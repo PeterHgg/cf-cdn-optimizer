@@ -12,7 +12,14 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-VERSION="v0.1.17"
+get_latest_version() {
+  curl -s https://api.github.com/repos/PeterHgg/cf-cdn-optimizer/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
+}
+VERSION=$(get_latest_version)
+if [ -z "$VERSION" ]; then
+   echo "Failed to detect latest version, defaulting to v0.1.19"
+   VERSION="v0.1.19"
+fi
 REPO="PeterHgg/cf-cdn-optimizer"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/cf-cdn-optimizer-linux-x64.tar.gz"
 INSTALL_DIR="$HOME/cf-cdn-optimizer"
