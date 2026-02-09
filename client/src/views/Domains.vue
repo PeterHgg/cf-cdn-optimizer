@@ -47,9 +47,9 @@
           <el-select v-model="domainForm.rootDomain" placeholder="选择根域名" filterable style="width: 100%">
             <el-option
               v-for="domain in aliyunDomains"
-              :key="domain.DomainId"
-              :label="domain.DomainName"
-              :value="domain.DomainName"
+              :key="domain.domainId"
+              :label="domain.domainName"
+              :value="domain.domainName"
             />
           </el-select>
         </el-form-item>
@@ -211,9 +211,13 @@ async function loadAliyunDomains() {
     const res = await api.get('/domains/aliyun-domains')
     if (res.data.success) {
       aliyunDomains.value = res.data.data
+    } else {
+      // Show error if API explicitly returns false success
+      ElMessage.error(res.data.message || '获取阿里云域名列表失败')
     }
   } catch (error) {
     console.error('加载阿里云域名失败:', error)
+    ElMessage.error('加载阿里云域名失败，请检查网络或配置')
   }
 }
 

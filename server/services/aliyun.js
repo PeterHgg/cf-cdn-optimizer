@@ -207,9 +207,24 @@ async function listDomains() {
 
     const response = await client.describeDomains(request);
 
+    // Normalize response structure (handle both camelCase and PascalCase from SDK)
+    const body = response.body;
+    const domainsList = body.domains?.domain || body.Domains?.Domain || [];
+
+    // Map to consistent camelCase format
+    const normalizedDomains = domainsList.map(item => ({
+      domainId: item.DomainId || item.domainId,
+      domainName: item.DomainName || item.domainName,
+      punyCode: item.PunyCode || item.punyCode,
+      dnsServers: item.DnsServers?.DnsServer || item.dnsServers?.dnsServer || []
+    }));
+
+    // Debug logging
+    console.log(`Found ${normalizedDomains.length} domains from Aliyun`);
+
     return {
       success: true,
-      data: response.body.domains.domain
+      data: normalizedDomains
     };
   } catch (error) {
     return {
