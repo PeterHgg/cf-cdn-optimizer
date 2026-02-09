@@ -11,13 +11,16 @@ let cachedZoneId = null;
 async function getSetting(dbKey, envKey) {
   try {
     const row = await dbGet('SELECT value FROM settings WHERE key = ?', [dbKey]);
+    console.log(`获取设置 ${dbKey}:`, row ? row.value : '(无)');
     if (row && row.value) {
       return row.value;
     }
   } catch (error) {
-    // 数据库可能还没初始化，忽略错误
+    console.error(`获取设置 ${dbKey} 失败:`, error.message);
   }
-  return process.env[envKey] || null;
+  const envValue = process.env[envKey] || null;
+  console.log(`回退到环境变量 ${envKey}:`, envValue ? '(已设置)' : '(无)');
+  return envValue;
 }
 
 /**
