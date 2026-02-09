@@ -72,7 +72,8 @@ async function createCustomHostname(hostname, fallbackOrigin) {
     const cf = await getClient();
     const zoneId = await getZoneId();
 
-    const response = await cf.customHostnames.create(zoneId, {
+    const response = await cf.customHostnames.create({
+      zone_id: zoneId,
       hostname: hostname,
       ssl: {
         method: 'txt',
@@ -107,7 +108,7 @@ async function getCustomHostnameStatus(customHostnameId) {
     const cf = await getClient();
     const zoneId = await getZoneId();
 
-    const response = await cf.customHostnames.get(zoneId, customHostnameId);
+    const response = await cf.customHostnames.get(customHostnameId, { zone_id: zoneId });
     return {
       success: true,
       data: response,
@@ -130,7 +131,7 @@ async function deleteCustomHostname(customHostnameId) {
     const cf = await getClient();
     const zoneId = await getZoneId();
 
-    await cf.customHostnames.delete(zoneId, customHostnameId);
+    await cf.customHostnames.delete(customHostnameId, { zone_id: zoneId });
     return { success: true };
   } catch (error) {
     return {
@@ -150,7 +151,10 @@ async function listCustomHostnames() {
 
     console.log('使用 Zone ID:', zoneId, '类型:', typeof zoneId);
     console.log('正在连接 Cloudflare API...');
-    const response = await cf.customHostnames.list(zoneId);
+
+    // 修复参数传递方式：zone_id 应该在参数对象中
+    const response = await cf.customHostnames.list({ zone_id: zoneId });
+
     console.log('Cloudflare API 连接成功');
     return {
       success: true,
@@ -176,7 +180,8 @@ async function createOriginRule(hostname, port) {
 
     // 使用 Page Rules 或者 Workers 来实现端口转发
     // 这里使用 DNS 记录 + Page Rule 的方式
-    const response = await cf.pagerules.create(zoneId, {
+    const response = await cf.pagerules.create({
+      zone_id: zoneId,
       targets: [{
         target: 'url',
         constraint: {
