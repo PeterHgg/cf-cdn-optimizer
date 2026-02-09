@@ -35,10 +35,27 @@ jobs:
       - name: Package application
         run: npm run package
 
+      - name: List generated files
+        run: |
+          echo "=== Listing dist directory ==="
+          ls -la dist/ || echo "dist directory not found"
+          echo "=== Listing current directory ==="
+          ls -la
+
       - name: Create distribution directory
         run: |
           mkdir -p release
-          cp dist/cf-cdn-optimizer-linux-x64 release/cf-cdn-optimizer-linux-x64
+          # Find the actual executable file
+          if [ -f "dist/cf-cdn-optimizer-linux-x64" ]; then
+            cp dist/cf-cdn-optimizer-linux-x64 release/cf-cdn-optimizer-linux-x64
+          elif [ -f "cf-cdn-optimizer-linux-x64" ]; then
+            cp cf-cdn-optimizer-linux-x64 release/cf-cdn-optimizer-linux-x64
+          elif [ -f "dist/cf-cdn-optimizer" ]; then
+            cp dist/cf-cdn-optimizer release/cf-cdn-optimizer-linux-x64
+          else
+            echo "Error: Cannot find executable file"
+            exit 1
+          fi
           cp .env.example release/.env.example
           cp README.md release/README.md
 
