@@ -182,18 +182,29 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
     );
 
     // 添加海外解析
-    const overseasRecord = await addDnsRecord(
-      domainName,
-      subdomain,
-      'CNAME',
-      overseasValue,
-      'overseas' // 海外线路
-    );
+    let overseasRecordId = null;
+    try {
+      const overseasRecord = await addDnsRecord(
+        domainName,
+        subdomain,
+        'CNAME',
+        overseasValue,
+        'overseas' // 海外线路
+      );
+
+      if (overseasRecord.success) {
+        overseasRecordId = overseasRecord.recordId;
+      } else {
+         console.warn(`添加海外线路解析失败: ${overseasRecord.message}`);
+      }
+    } catch (error) {
+       console.warn(`添加海外线路解析异常 (可能是免费版不支持): ${error.message}`);
+    }
 
     return {
       success: true,
       chinaRecordId: chinaRecord.recordId,
-      overseasRecordId: overseasRecord.recordId
+      overseasRecordId: overseasRecordId
     };
   } catch (error) {
     return {

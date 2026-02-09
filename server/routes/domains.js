@@ -138,25 +138,38 @@ router.post('/', async (req, res) => {
     }
 
     // 3. 自动添加阿里云验证记录 (TXT)
+    const addTxtRecord = async (name, value) => {
+      // record.name 是完整域名 (e.g., _cf-custom-hostname.sub.example.com)
+      // 我们需要提取 RR (主机记录)
+      let rr = name;
+      if (rr === rootDomain) {
+        rr = '@';
+      } else if (rr.endsWith(`.${rootDomain}`)) {
+        rr = rr.slice(0, -(rootDomain.length + 1));
+      }
+
+      console.log(`正在添加验证记录: ${rr} TXT ${value}`);
+      await aliyunService.addDnsRecord(
+        rootDomain,
+        rr,
+        'TXT',
+        value
+      );
+    };
+
     if (cfResult.verificationRecords && cfResult.verificationRecords.length > 0) {
       for (const record of cfResult.verificationRecords) {
         if (record.type === 'txt') { // 通常是 txt
-             // record.name 是完整域名 (e.g., _cf-custom-hostname.sub.example.com)
-             // 我们需要提取 RR (主机记录)
-             // 简单的处理方式：从 record.name 中移除 rootDomain
-             let rr = record.name;
-             if (rr.endsWith(`.${rootDomain}`)) {
-               rr = rr.slice(0, -(rootDomain.length + 1));
-             }
-
-             console.log(`正在添加验证记录: ${rr} TXT ${record.content}`);
-             await aliyunService.addDnsRecord(
-               rootDomain,
-               rr,
-               'TXT',
-               record.content
-             );
+           await addTxtRecord(record.name, record.content);
         }
+      }
+    }
+
+    // 添加 Hostname Ownership Verification 记录
+    if (cfResult.ownershipVerification) {
+      const ov = cfResult.ownershipVerification;
+      if (ov.type === 'txt') {
+        await addTxtRecord(ov.name, ov.value);
       }
     }
 

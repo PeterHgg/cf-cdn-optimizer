@@ -89,7 +89,8 @@ async function createCustomHostname(hostname, fallbackOrigin) {
       success: true,
       data: response,
       customHostnameId: response.id,
-      verificationRecords: response.ssl.validation_records
+      verificationRecords: response.ssl.validation_records,
+      ownershipVerification: response.ownership_verification
     };
   } catch (error) {
     console.error('创建自定义主机名失败:', error);
