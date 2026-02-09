@@ -8,9 +8,24 @@
     "server:dev": "nodemon server/index.js",
     "client:dev": "cd client && npm run dev",
     "build": "cd client && npm run build",
+    "build:all": "npm run build && npm run package",
     "start": "node server/index.js",
     "install:all": "npm install && cd client && npm install",
-    "migrate": "node server/database/migrate.js"
+    "migrate": "node server/database/migrate.js",
+    "package": "pkg . --compress GZip"
+  },
+  "bin": "server/index.js",
+  "pkg": {
+    "assets": [
+      "client/dist/**/*",
+      "node_modules/sqlite3/**/*"
+    ],
+    "targets": [
+      "node18-win-x64",
+      "node18-linux-x64",
+      "node18-macos-x64"
+    ],
+    "outputPath": "dist"
   },
   "keywords": [
     "cloudflare",
@@ -37,6 +52,7 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.3",
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "pkg": "^5.8.1"
   }
 }

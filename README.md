@@ -44,12 +44,27 @@
 
 ## 🚀 快速开始
 
-### 环境要求
+### 方式一：下载预编译可执行文件（推荐）
+
+**适合普通用户，无需安装 Node.js**
+
+1. 前往 [Releases 页面](https://github.com/PeterHgg/cf-cdn-optimizer/releases) 下载对应系统的压缩包
+2. 解压并运行安装脚本
+3. 配置 `.env` 文件
+4. 启动可执行文件
+
+详细步骤请查看：[二进制文件安装指南](docs/BINARY_INSTALL.md)
+
+### 方式二：从源码安装
+
+**适合开发者或需要自定义的用户**
+
+#### 环境要求
 
 - Node.js 16+
 - npm 或 yarn
 
-### 一键安装
+#### 一键安装
 
 **Linux/macOS:**
 ```bash
