@@ -18,7 +18,9 @@
   "pkg": {
     "assets": [
       "client/dist/**/*",
-      "node_modules/sqlite3/**/*"
+      "node_modules/sqlite3/**/*",
+      "node_modules/cloudflare/**/*",
+      "node_modules/@alicloud/**/*"
     ],
     "targets": [
       "node18-linux-x64"
