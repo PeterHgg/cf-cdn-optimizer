@@ -10,7 +10,8 @@ const PORT = process.env.PORT || 3000;
 
 // 自动初始化数据库
 async function initDatabase() {
-  const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '../data/database.sqlite');
+  // 使用 process.cwd() 而不是 __dirname，因为 pkg 打包后 __dirname 是只读的 snapshot
+  const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), 'data/database.sqlite');
   const dbDir = path.dirname(dbPath);
 
   // 确保数据目录存在
@@ -40,8 +41,8 @@ initDatabase().then(() => {
   app.use(bodyParser.json());
   app.use(bodyParser.urlencoded({ extended: true }));
 
-  // 静态文件服务
-  app.use(express.static(path.join(__dirname, '../client/dist')));
+  // 静态文件服务 - 使用 process.cwd() 因为 pkg 打包后 __dirname 是只读的
+  app.use(express.static(path.join(process.cwd(), 'client/dist')));
 
   // API 路由
   app.use('/api/auth', require('./routes/auth'));
@@ -53,7 +54,7 @@ initDatabase().then(() => {
 
   // 前端路由
   app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+    res.sendFile(path.join(process.cwd(), 'client/dist/index.html'));
   });
 
   // 错误处理

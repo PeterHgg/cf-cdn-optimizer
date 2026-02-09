@@ -2,7 +2,8 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
-const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '../../data/database.sqlite');
+// 使用 process.cwd() 而不是 __dirname，因为 pkg 打包后 __dirname 是只读的 snapshot
+const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), 'data/database.sqlite');
 
 // 确保数据目录存在
 const dbDir = path.dirname(dbPath);
