@@ -156,11 +156,23 @@ async function listDnsRecords(domainName, subdomain = null) {
 }
 
 /**
+ * 检测记录类型 (IP -> A, 域名 -> CNAME)
+ */
+function detectRecordType(value) {
+  // 简单 IPv4 正则检测
+  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+  if (ipv4Regex.test(value)) {
+    return 'A';
+  }
+  return 'CNAME';
+}
+
+/**
  * 配置分地区解析
  * @param {string} domainName - 根域名
  * @param {string} subdomain - 子域名
- * @param {string} chinaValue - 中国大陆解析值（优选 IP）
- * @param {string} overseasValue - 海外解析值（回退源）
+ * @param {string} chinaValue - 中国大陆解析值（优选 IP 或 CNAME）
+ * @param {string} overseasValue - 海外解析值（回退源 CNAME 或 IP）
  */
 async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
   try {
@@ -173,10 +185,11 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
     }
 
     // 添加中国大陆解析
+    const chinaType = detectRecordType(chinaValue);
     const chinaRecord = await addDnsRecord(
       domainName,
       subdomain,
-      'CNAME',
+      chinaType,
       chinaValue,
       'default' // 中国大陆线路
     );
@@ -184,10 +197,11 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
     // 添加海外解析
     let overseasRecordId = null;
     try {
+      const overseasType = detectRecordType(overseasValue);
       const overseasRecord = await addDnsRecord(
         domainName,
         subdomain,
-        'CNAME',
+        overseasType,
         overseasValue,
         'overseas' // 海外线路
       );
