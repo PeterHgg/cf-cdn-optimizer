@@ -1,16 +1,74 @@
 const Cloudflare = require('cloudflare');
+const { dbGet } = require('../database/db');
 
-const cf = new Cloudflare({
-  apiToken: process.env.CF_API_TOKEN
-});
+// 缓存客户端实例
+let cfClient = null;
+let cachedZoneId = null;
 
-const zoneId = process.env.CF_ZONE_ID;
+/**
+ * 获取设置值（优先数据库，回退环境变量）
+ */
+async function getSetting(dbKey, envKey) {
+  try {
+    const row = await dbGet('SELECT value FROM settings WHERE key = ?', [dbKey]);
+    if (row && row.value) {
+      return row.value;
+    }
+  } catch (error) {
+    // 数据库可能还没初始化，忽略错误
+  }
+  return process.env[envKey] || null;
+}
+
+/**
+ * 获取 Cloudflare 客户端
+ */
+async function getClient() {
+  const apiToken = await getSetting('cf_api_token', 'CF_API_TOKEN');
+
+  if (!apiToken) {
+    throw new Error('未配置 Cloudflare API Token，请在设置页面配置');
+  }
+
+  // 如果 token 变化，重新创建客户端
+  if (!cfClient) {
+    cfClient = new Cloudflare({ apiToken });
+  }
+
+  return cfClient;
+}
+
+/**
+ * 获取 Zone ID
+ */
+async function getZoneId() {
+  if (!cachedZoneId) {
+    cachedZoneId = await getSetting('cf_zone_id', 'CF_ZONE_ID');
+  }
+
+  if (!cachedZoneId) {
+    throw new Error('未配置 Cloudflare Zone ID，请在设置页面配置');
+  }
+
+  return cachedZoneId;
+}
+
+/**
+ * 刷新客户端缓存（配置更新后调用）
+ */
+function refreshClient() {
+  cfClient = null;
+  cachedZoneId = null;
+}
 
 /**
  * 创建自定义主机名
  */
 async function createCustomHostname(hostname, fallbackOrigin) {
   try {
+    const cf = await getClient();
+    const zoneId = await getZoneId();
+
     const response = await cf.customHostnames.create(zoneId, {
       hostname: hostname,
       ssl: {
@@ -43,6 +101,9 @@ async function createCustomHostname(hostname, fallbackOrigin) {
  */
 async function getCustomHostnameStatus(customHostnameId) {
   try {
+    const cf = await getClient();
+    const zoneId = await getZoneId();
+
     const response = await cf.customHostnames.get(zoneId, customHostnameId);
     return {
       success: true,
@@ -63,6 +124,9 @@ async function getCustomHostnameStatus(customHostnameId) {
  */
 async function deleteCustomHostname(customHostnameId) {
   try {
+    const cf = await getClient();
+    const zoneId = await getZoneId();
+
     await cf.customHostnames.delete(zoneId, customHostnameId);
     return { success: true };
   } catch (error) {
@@ -78,6 +142,9 @@ async function deleteCustomHostname(customHostnameId) {
  */
 async function listCustomHostnames() {
   try {
+    const cf = await getClient();
+    const zoneId = await getZoneId();
+
     const response = await cf.customHostnames.list(zoneId);
     return {
       success: true,
@@ -96,6 +163,9 @@ async function listCustomHostnames() {
  */
 async function createOriginRule(hostname, port) {
   try {
+    const cf = await getClient();
+    const zoneId = await getZoneId();
+
     // 使用 Page Rules 或者 Workers 来实现端口转发
     // 这里使用 DNS 记录 + Page Rule 的方式
     const response = await cf.pagerules.create(zoneId, {
@@ -133,5 +203,6 @@ module.exports = {
   getCustomHostnameStatus,
   deleteCustomHostname,
   listCustomHostnames,
-  createOriginRule
+  createOriginRule,
+  refreshClient
 };

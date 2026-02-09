@@ -1,20 +1,59 @@
 const AlidnsClient = require('@alicloud/alidns20150109').default;
 const OpenApi = require('@alicloud/openapi-client');
+const { dbGet } = require('../database/db');
 
-// 创建阿里云 DNS 客户端
-const config = new OpenApi.Config({
-  accessKeyId: process.env.ALIYUN_ACCESS_KEY_ID,
-  accessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET,
-  endpoint: 'alidns.cn-hangzhou.aliyuncs.com'
-});
+// 缓存客户端实例
+let aliyunClient = null;
 
-const client = new AlidnsClient(config);
+/**
+ * 获取设置值（优先数据库，回退环境变量）
+ */
+async function getSetting(dbKey, envKey) {
+  try {
+    const row = await dbGet('SELECT value FROM settings WHERE key = ?', [dbKey]);
+    if (row && row.value) {
+      return row.value;
+    }
+  } catch (error) {
+    // 数据库可能还没初始化，忽略错误
+  }
+  return process.env[envKey] || null;
+}
+
+/**
+ * 获取阿里云 DNS 客户端
+ */
+async function getClient() {
+  const accessKeyId = await getSetting('aliyun_access_key_id', 'ALIYUN_ACCESS_KEY_ID');
+  const accessKeySecret = await getSetting('aliyun_access_key_secret', 'ALIYUN_ACCESS_KEY_SECRET');
+
+  if (!accessKeyId || !accessKeySecret) {
+    throw new Error('未配置阿里云 AccessKey，请在设置页面配置');
+  }
+
+  // 每次都创建新客户端，确保使用最新配置
+  const config = new OpenApi.Config({
+    accessKeyId,
+    accessKeySecret,
+    endpoint: 'alidns.cn-hangzhou.aliyuncs.com'
+  });
+
+  return new AlidnsClient(config);
+}
+
+/**
+ * 刷新客户端缓存（配置更新后调用）
+ */
+function refreshClient() {
+  aliyunClient = null;
+}
 
 /**
  * 添加 DNS 记录（分地区解析）
  */
 async function addDnsRecord(domainName, subdomain, recordType, value, line = 'default') {
   try {
+    const client = await getClient();
     const request = new AlidnsClient.AddDomainRecordRequest({
       domainName: domainName,
       RR: subdomain,
@@ -43,6 +82,7 @@ async function addDnsRecord(domainName, subdomain, recordType, value, line = 'de
  */
 async function updateDnsRecord(recordId, RR, recordType, value) {
   try {
+    const client = await getClient();
     const request = new AlidnsClient.UpdateDomainRecordRequest({
       recordId: recordId,
       RR: RR,
@@ -66,6 +106,7 @@ async function updateDnsRecord(recordId, RR, recordType, value) {
  */
 async function deleteDnsRecord(recordId) {
   try {
+    const client = await getClient();
     const request = new AlidnsClient.DeleteDomainRecordRequest({
       recordId: recordId
     });
@@ -86,6 +127,7 @@ async function deleteDnsRecord(recordId) {
  */
 async function listDnsRecords(domainName, subdomain = null) {
   try {
+    const client = await getClient();
     const request = new AlidnsClient.DescribeDomainRecordsRequest({
       domainName: domainName,
       RRKeyWord: subdomain
@@ -158,5 +200,6 @@ module.exports = {
   updateDnsRecord,
   deleteDnsRecord,
   listDnsRecords,
-  setupGeoDns
+  setupGeoDns,
+  refreshClient
 };
