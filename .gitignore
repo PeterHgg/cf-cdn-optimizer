@@ -1,0 +1,11 @@
+node_modules/
+.env
+data/
+*.sqlite
+*.log
+client/dist/
+client/node_modules/
+.DS_Store
+*.swp
+*.swo
+*~
