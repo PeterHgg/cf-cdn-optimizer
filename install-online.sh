@@ -75,30 +75,61 @@ echo -e "${GREEN}✅ 工具检查通过${NC}"
 # 创建安装目录
 echo -e "\n${BLUE}[3/6] 准备安装目录...${NC}"
 
+UPDATE_MODE=false
 if [ -d "$INSTALL_DIR" ]; then
-  echo -e "${YELLOW}⚠️  安装目录已存在: $INSTALL_DIR${NC}"
-  read -p "是否删除并重新安装? (y/N): " -n 1 -r
+  echo -e "${YELLOW}⚠️  检测到已有安装: $INSTALL_DIR${NC}"
+  echo ""
+  echo "请选择操作："
+  echo "  1) 更新 (保留数据和配置)"
+  echo "  2) 全新安装 (删除所有数据)"
+  echo "  3) 取消"
+  echo ""
+  read -p "请输入选项 [1-3]: " -n 1 -r
   echo
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    # 停止可能运行的服务
-    if systemctl is-active --quiet cf-cdn-optimizer 2>/dev/null; then
+
+  case $REPLY in
+    1)
+      echo -e "${GREEN}选择: 更新模式${NC}"
+      UPDATE_MODE=true
+
+      # 停止现有服务
       echo "停止现有服务..."
-      sudo systemctl stop cf-cdn-optimizer 2>/dev/null || true
-    fi
-    pkill -f "cf-cdn-optimizer-linux-x64" 2>/dev/null || true
+      if systemctl is-active --quiet cf-cdn-optimizer 2>/dev/null; then
+        sudo systemctl stop cf-cdn-optimizer 2>/dev/null || true
+      fi
+      pkill -f "cf-cdn-optimizer-linux-x64" 2>/dev/null || true
+      sleep 2
 
-    # 备份数据库
-    if [ -f "$INSTALL_DIR/data/database.sqlite" ]; then
-      BACKUP_FILE="$HOME/cf-cdn-optimizer-backup-$(date +%Y%m%d-%H%M%S).sqlite"
-      cp "$INSTALL_DIR/data/database.sqlite" "$BACKUP_FILE"
-      echo -e "${GREEN}✅ 数据库已备份到: $BACKUP_FILE${NC}"
-    fi
+      # 备份当前可执行文件
+      if [ -f "$INSTALL_DIR/cf-cdn-optimizer-linux-x64" ]; then
+        mv "$INSTALL_DIR/cf-cdn-optimizer-linux-x64" "$INSTALL_DIR/cf-cdn-optimizer-linux-x64.bak"
+        echo -e "${GREEN}✅ 已备份旧版本可执行文件${NC}"
+      fi
+      ;;
+    2)
+      echo -e "${YELLOW}选择: 全新安装${NC}"
 
-    rm -rf "$INSTALL_DIR"
-  else
-    echo "安装已取消"
-    exit 0
-  fi
+      # 停止可能运行的服务
+      if systemctl is-active --quiet cf-cdn-optimizer 2>/dev/null; then
+        echo "停止现有服务..."
+        sudo systemctl stop cf-cdn-optimizer 2>/dev/null || true
+      fi
+      pkill -f "cf-cdn-optimizer-linux-x64" 2>/dev/null || true
+
+      # 备份数据库
+      if [ -f "$INSTALL_DIR/data/database.sqlite" ]; then
+        BACKUP_FILE="$HOME/cf-cdn-optimizer-backup-$(date +%Y%m%d-%H%M%S).sqlite"
+        cp "$INSTALL_DIR/data/database.sqlite" "$BACKUP_FILE"
+        echo -e "${GREEN}✅ 数据库已备份到: $BACKUP_FILE${NC}"
+      fi
+
+      rm -rf "$INSTALL_DIR"
+      ;;
+    *)
+      echo "安装已取消"
+      exit 0
+      ;;
+  esac
 fi
 
 mkdir -p "$INSTALL_DIR"
