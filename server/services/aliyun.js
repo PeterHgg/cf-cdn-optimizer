@@ -203,7 +203,7 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
       subdomain,
       chinaType,
       chinaValue,
-      'cn' // 阿里云 "中国地区" 线路代码
+      'internal' // 阿里云 "中国地区" 线路代码
     );
 
     let chinaRecordId = null;

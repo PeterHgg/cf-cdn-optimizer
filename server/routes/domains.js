@@ -215,8 +215,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // 3. 添加 Hostname Ownership Verification 记录 (只需要这一个 TXT)
-    // SSL 证书验证在 CNAME 到回退源后会自动通过，不需要单独添加 _acme-challenge TXT
+    // 3. 添加验证记录 (Ownership TXT + SSL TXT)
     const addTxtRecord = async (name, value) => {
       let rr = name;
       if (rr === rootDomain) {
@@ -234,10 +233,23 @@ router.post('/', async (req, res) => {
       );
     };
 
+    // 3a. 添加 Hostname Ownership Verification TXT
     if (cfResult.ownershipVerification) {
       const ov = cfResult.ownershipVerification;
       if (ov.type && ov.type.toLowerCase() === 'txt') {
         await addTxtRecord(ov.name, ov.value);
+      }
+    }
+
+    // 3b. 添加 SSL 证书验证 TXT (_acme-challenge)
+    if (cfResult.verificationRecords && Array.isArray(cfResult.verificationRecords)) {
+      for (const record of cfResult.verificationRecords) {
+        // 尝试多种字段名格式 (txt_name/txt_value 或 name/value)
+        const txtName = record.txt_name || record.name;
+        const txtValue = record.txt_value || record.value;
+        if (txtName && txtValue) {
+          await addTxtRecord(txtName, txtValue);
+        }
       }
     }
 
