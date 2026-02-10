@@ -233,16 +233,42 @@ async function createOriginRule(hostname, port) {
  */
 async function listZones() {
   try {
-    const cf = await getClient();
-    const response = await cf.zones.list();
-    return {
-      success: true,
-      data: response.result
+    // 改用 axios 直接调用，绕过 cloudflare 库可能存在的 Header 问题，并获取更完整的 account 信息
+    const axios = require('axios');
+    const email = await getSetting('cf_email', 'CF_EMAIL');
+    const apiKey = await getSetting('cf_api_key', 'CF_API_KEY');
+    const apiToken = await getSetting('cf_api_token', 'CF_API_TOKEN');
+
+    let headers = {
+      'Content-Type': 'application/json'
     };
+
+    if (email && apiKey) {
+      headers['X-Auth-Email'] = email;
+      headers['X-Auth-Key'] = apiKey;
+    } else if (apiToken) {
+      headers['Authorization'] = `Bearer ${apiToken}`;
+    } else {
+      throw new Error('未配置 Cloudflare 认证信息');
+    }
+
+    const response = await axios.get('https://api.cloudflare.com/client/v4/zones?per_page=50&status=active', { headers });
+
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.result
+      };
+    } else {
+      return {
+        success: false,
+        message: response.data.errors?.[0]?.message || 'Cloudflare API error'
+      };
+    }
   } catch (error) {
     return {
       success: false,
-      message: error.message
+      message: error.response?.data?.errors?.[0]?.message || error.message
     };
   }
 }

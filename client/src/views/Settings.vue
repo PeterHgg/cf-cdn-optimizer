@@ -143,7 +143,7 @@
               CF-CDN-Optimizer
             </el-descriptions-item>
             <el-descriptions-item label="版本">
-              v0.1.32
+              v0.1.33
             </el-descriptions-item>
             <el-descriptions-item label="描述">
               Cloudflare CDN 优选加速管理平台 - 自动化管理 Cloudflare 自定义主机名 + 阿里云 DNS 优选 IP
@@ -357,8 +357,29 @@ async function loadZones() {
     if (res.data.success) {
       zoneOptions.value = res.data.data.map(z => ({
         id: z.id,
-        name: z.name
+        name: z.name,
+        account: z.account // 保存 account 信息
       }))
+
+      // 自动填充 Account ID (如果还没填)
+      if (zoneOptions.value.length > 0 && !cfForm.value.accountId) {
+        // 优先尝试找当前选中的 zone (如果有)
+        if (cfForm.value.zoneId) {
+          const currentZone = zoneOptions.value.find(z => z.id === cfForm.value.zoneId)
+          if (currentZone && currentZone.account) {
+            cfForm.value.accountId = currentZone.account.id
+          }
+        }
+        // 否则使用第一个 zone 的 account id
+        else if (zoneOptions.value[0].account) {
+          cfForm.value.accountId = zoneOptions.value[0].account.id
+        }
+
+        if (cfForm.value.accountId) {
+          ElMessage.success('已自动获取并填充 Account ID')
+        }
+      }
+
       ElMessage.success('成功获取 Zone 列表')
     } else {
       ElMessage.error('获取列表失败: ' + res.data.message)
@@ -371,9 +392,12 @@ async function loadZones() {
 }
 
 function handleZoneChange(val) {
-  // 找到对应的 zone 对象，自动填充 account id (如果 API 返回了 account 信息)
+  // 找到对应的 zone 对象，自动填充 account id
   const zone = zoneOptions.value.find(z => z.id === val)
-  // 目前 API 可能没返回 account id，暂不处理
+  if (zone && zone.account && zone.account.id) {
+    cfForm.value.accountId = zone.account.id
+    // ElMessage.success('已自动切换 Account ID')
+  }
 }
 
 // 保存 Cloudflare 设置
