@@ -176,11 +176,13 @@ function detectRecordType(value) {
  */
 async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
   try {
-    // 删除现有记录
+    // 删除现有记录 (只删除 RR 完全匹配的记录，避免误删 _acme-challenge 等验证记录)
     const existingRecords = await listDnsRecords(domainName, subdomain);
     if (existingRecords.success && existingRecords.data) {
       for (const record of existingRecords.data) {
-        await deleteDnsRecord(record.recordId);
+        if (record.RR === subdomain) {
+          await deleteDnsRecord(record.recordId);
+        }
       }
     }
 
