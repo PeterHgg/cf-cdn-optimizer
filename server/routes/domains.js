@@ -23,6 +23,90 @@ async function getPublicIp() {
   }
 }
 
+// 后台自动轮询验证状态
+async function startVerificationPolling(domainId) {
+  const MAX_ATTEMPTS = 30; // 最多检查 30 次
+  const INTERVAL = 30000; // 每 30 秒检查一次
+
+  let attempts = 0;
+
+  const poll = async () => {
+    attempts++;
+    try {
+      const domain = await dbGet('SELECT * FROM domain_configs WHERE id = ?', [domainId]);
+      if (!domain || !domain.cf_custom_hostname_id) {
+        console.log(`[自动验证] 域名 ID ${domainId} 已不存在，停止轮询`);
+        return;
+      }
+
+      // 已经验证通过，停止
+      if (domain.status === 'active') {
+        console.log(`[自动验证] 域名 ${domain.subdomain}.${domain.root_domain} 已激活，停止轮询`);
+        return;
+      }
+
+      const status = await cfService.getCustomHostnameStatus(domain.cf_custom_hostname_id);
+
+      if (status.success) {
+        const sslStatus = status.sslStatus;
+        const hostStatus = status.status;
+        console.log(`[自动验证] 域名 ${domain.subdomain}.${domain.root_domain} - SSL: ${sslStatus}, Host: ${hostStatus} (${attempts}/${MAX_ATTEMPTS})`);
+
+        await dbRun(
+          'UPDATE domain_configs SET status = ? WHERE id = ?',
+          [sslStatus, domainId]
+        );
+
+        // 如果 ownership 还在 pending，补充 ownership TXT 记录
+        if (hostStatus === 'pending' && status.data && status.data.ownership_verification) {
+          const ov = status.data.ownership_verification;
+          if (ov.type && ov.type.toLowerCase() === 'txt' && ov.name && ov.value) {
+            let rr = ov.name;
+            const rootDomain = domain.root_domain;
+            if (rr === rootDomain) {
+              rr = '@';
+            } else if (rr.endsWith(`.${rootDomain}`)) {
+              rr = rr.slice(0, -(rootDomain.length + 1));
+            }
+
+            // 检查是否已存在
+            const existing = await aliyunService.listDnsRecords(rootDomain, rr);
+            const exists = existing.success && existing.data && existing.data.some(
+              r => r.type === 'TXT' && r.RR === rr
+            );
+
+            if (!exists) {
+              console.log(`[自动验证] 补充 ownership 记录: ${rr} TXT ${ov.value}`);
+              await aliyunService.addDnsRecord(rootDomain, rr, 'TXT', ov.value);
+            }
+          }
+        }
+
+        // SSL 和 hostname 都已激活，停止
+        if (sslStatus === 'active' || hostStatus === 'active') {
+          console.log(`[自动验证] 域名 ${domain.subdomain}.${domain.root_domain} 验证完成!`);
+          return;
+        }
+      }
+
+      // 继续轮询
+      if (attempts < MAX_ATTEMPTS) {
+        setTimeout(poll, INTERVAL);
+      } else {
+        console.log(`[自动验证] 域名 ID ${domainId} 已达最大检查次数 ${MAX_ATTEMPTS}，停止轮询`);
+      }
+    } catch (error) {
+      console.error(`[自动验证] 检查域名 ID ${domainId} 失败:`, error.message);
+      if (attempts < MAX_ATTEMPTS) {
+        setTimeout(poll, INTERVAL);
+      }
+    }
+  };
+
+  // 延迟 10 秒后开始第一次检查
+  setTimeout(poll, 10000);
+}
+
 // 获取阿里云域名列表
 router.get('/aliyun-domains', async (req, res) => {
   try {
@@ -106,8 +190,6 @@ router.post('/', async (req, res) => {
 
     // 检查 Cloudflare 记录
     const cfZoneId = await cfService.getZoneId();
-    // 确保 fallbackRootDomain 匹配当前配置的 Zone ID (简单检查：我们假设用户选择的 rootDomain 都在同一个 Zone 下，
-    // 或者 cfService 能够处理。这里我们主要检查 fallbackOrigin A 记录)
     const cfCheck = await cfService.listDnsRecords(cfZoneId, fallbackOrigin, 'A');
     if (cfCheck.success && cfCheck.data && cfCheck.data.length > 0) {
       return res.status(409).json({
@@ -120,11 +202,7 @@ router.post('/', async (req, res) => {
     const publicIp = await getPublicIp();
     console.log(`服务器公网 IP: ${publicIp}`);
 
-    // 1. 在 Cloudflare 创建/更新回退源的 A 记录
-    // 假设 fallbackOrigin 是完整域名，我们需要提取主机名
-    // 注意：这里假设 fallbackOrigin 属于配置的 CF Zone
-    // 如果 fallbackOrigin 已经在其他地方配置过，这一步可能会更新它的 IP
-    // const cfZoneId = await cfService.getZoneId(); // Already fetched above
+    // 1. 在 Cloudflare 创建回退源的 A 记录
     await cfService.addDnsRecord(cfZoneId, 'A', fallbackOrigin, publicIp, true); // proxied: true
 
     // 2. 在 Cloudflare 创建自定义主机名
@@ -137,10 +215,9 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // 3. 自动添加阿里云验证记录 (TXT)
+    // 3. 添加 Hostname Ownership Verification 记录 (只需要这一个 TXT)
+    // SSL 证书验证在 CNAME 到回退源后会自动通过，不需要单独添加 _acme-challenge TXT
     const addTxtRecord = async (name, value) => {
-      // record.name 是完整域名 (e.g., _cf-custom-hostname.sub.example.com)
-      // 我们需要提取 RR (主机记录)
       let rr = name;
       if (rr === rootDomain) {
         rr = '@';
@@ -157,27 +234,9 @@ router.post('/', async (req, res) => {
       );
     };
 
-    if (cfResult.verificationRecords && cfResult.verificationRecords.length > 0) {
-      for (const record of cfResult.verificationRecords) {
-        // 兼容大小写 (API 可能返回 TXT 或 txt)
-        if (record.type && record.type.toLowerCase() === 'txt') {
-           // 兼容 Cloudflare API 不同版本的返回字段 (txt_name/txt_value vs name/content)
-           const txtName = record.name || record.txt_name;
-           const txtValue = record.content || record.value || record.txt_value;
-
-           if (txtName && txtValue) {
-             await addTxtRecord(txtName, txtValue);
-           } else {
-             console.warn('无法解析 SSL 验证记录字段:', record);
-           }
-        }
-      }
-    }
-
-    // 添加 Hostname Ownership Verification 记录
     if (cfResult.ownershipVerification) {
       const ov = cfResult.ownershipVerification;
-      if (ov.type === 'txt') {
+      if (ov.type && ov.type.toLowerCase() === 'txt') {
         await addTxtRecord(ov.name, ov.value);
       }
     }
@@ -195,8 +254,8 @@ router.post('/', async (req, res) => {
     const aliyunResult = await aliyunService.setupGeoDns(
       rootDomain,
       subdomain,
-      selectedIp,      // 中国大陆使用优选 IP
-      fallbackOrigin   // 海外使用回退源
+      selectedIp,      // 中国地区使用优选 IP
+      fallbackOrigin   // 默认(海外)使用回退源
     );
 
     if (!aliyunResult.success) {
@@ -222,18 +281,20 @@ router.post('/', async (req, res) => {
       aliyunResult.chinaRecordId,
       aliyunResult.overseasRecordId,
       selectedIp,
-      'pending' // 初始状态设为 pending，因为可能还需要验证
+      'pending'
     ]);
+
+    // 7. 启动后台自动轮询验证
+    startVerificationPolling(result.lastID);
 
     res.json({
       success: true,
       message: aliyunResult.warning
         ? `域名配置成功，但有警告: ${aliyunResult.warning}`
-        : '域名配置创建成功 (已自动添加验证记录)',
+        : '域名配置创建成功，后台正在自动验证中...',
       data: {
         id: result.lastID,
-        fullDomain,
-        verificationRecords: cfResult.verificationRecords
+        fullDomain
       }
     });
   } catch (error) {
@@ -263,11 +324,25 @@ router.delete('/:id', async (req, res) => {
       await aliyunService.deleteDnsRecord(domain.aliyun_record_id_overseas);
     }
 
-    // 删除 Cloudflare 回退源 DNS 记录 (清理垃圾)
+    // 删除阿里云所有相关记录 (包括中国地区、TXT验证等)
+    try {
+      const allRecords = await aliyunService.listDnsRecords(domain.root_domain, domain.subdomain);
+      if (allRecords.success && allRecords.data) {
+        for (const record of allRecords.data) {
+          if (record.RR === domain.subdomain) {
+            console.log(`删除阿里云记录: ${record.RR} ${record.type} ${record.value}`);
+            await aliyunService.deleteDnsRecord(record.recordId);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('清理阿里云残留记录失败:', e.message);
+    }
+
+    // 删除 Cloudflare 回退源 DNS 记录
     if (domain.fallback_origin) {
        try {
          const cfZoneId = await cfService.getZoneId();
-         // 查找 A 记录
          const records = await cfService.listDnsRecords(cfZoneId, domain.fallback_origin, 'A');
          if (records.success && records.data && records.data.length > 0) {
            for (const record of records.data) {
@@ -348,60 +423,6 @@ router.get('/:id/verify', async (req, res) => {
         'UPDATE domain_configs SET status = ? WHERE id = ?',
         [status.sslStatus, req.params.id]
       );
-
-      // 检查并补充验证记录 (自动修复)
-      if (status.status === 'pending' || status.sslStatus === 'pending_validation') {
-         const data = status.data;
-         const rootDomain = domain.root_domain;
-         const addedRecords = [];
-
-         const ensureTxtRecord = async (name, value) => {
-             // 检查是否存在
-             let rr = name;
-             if (rr === rootDomain) {
-               rr = '@';
-             } else if (rr.endsWith(`.${rootDomain}`)) {
-               rr = rr.slice(0, -(rootDomain.length + 1));
-             }
-
-             // 查询现有记录
-             const existing = await aliyunService.listDnsRecords(rootDomain, rr);
-             const exists = existing.success && existing.data && existing.data.some(r => r.Value === value); // 注意阿里云返回可能是 Value
-
-             if (!exists) {
-               console.log(`[自动修复] 补充验证记录: ${rr} -> ${value}`);
-               await aliyunService.addDnsRecord(rootDomain, rr, 'TXT', value);
-               addedRecords.push(rr);
-             }
-         };
-
-         // 1. SSL 验证记录
-         if (data.ssl && data.ssl.validation_records) {
-           for (const record of data.ssl.validation_records) {
-             // 兼容大小写
-             if (record.type && record.type.toLowerCase() === 'txt') {
-                const txtName = record.name || record.txt_name;
-                const txtValue = record.value || record.txt_value || record.content;
-                if (txtName && txtValue) {
-                  await ensureTxtRecord(txtName, txtValue);
-                }
-             }
-           }
-         }
-
-         // 2. Ownership 验证记录
-         if (data.ownership_verification) {
-            const ov = data.ownership_verification;
-            // 兼容大小写
-            if (ov.type && ov.type.toLowerCase() === 'txt') {
-               await ensureTxtRecord(ov.name, ov.value);
-            }
-         }
-
-         if (addedRecords.length > 0) {
-           status.message = (status.message || '') + ` (已自动补充 ${addedRecords.length} 条验证记录)`;
-         }
-      }
     }
 
     res.json(status);

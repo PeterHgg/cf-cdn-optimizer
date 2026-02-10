@@ -185,7 +185,6 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
     }
 
     // 添加默认解析 (解析到回退源，作为兜底/海外)
-    // 用户反馈：需要默认地区解析到回退源
     const overseasType = detectRecordType(overseasValue);
     console.log(`添加默认解析 (回退源): ${overseasValue} (${overseasType})`);
     const defaultRecord = await addDnsRecord(
@@ -196,39 +195,29 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
       'default'
     );
 
-    // 添加中国三大运营商解析 (解析到优选 IP/域名)
-    // 用户反馈：中国地区解析到优选域名。由于免费版不支持单一的"中国"线路，这里使用三大运营商代替
+    // 添加中国地区解析 (解析到优选 IP/域名)
     const chinaType = detectRecordType(chinaValue);
-    const chinaLines = ['telecom', 'unicom', 'mobile'];
-    const chinaRecordIds = [];
-
     console.log(`添加中国地区解析 (优选): ${chinaValue} (${chinaType})`);
+    const chinaRecord = await addDnsRecord(
+      domainName,
+      subdomain,
+      chinaType,
+      chinaValue,
+      'cn' // 阿里云 "中国地区" 线路代码
+    );
 
-    for (const line of chinaLines) {
-      try {
-        const result = await addDnsRecord(
-          domainName,
-          subdomain,
-          chinaType,
-          chinaValue,
-          line
-        );
-        if (result.success) {
-          chinaRecordIds.push(result.recordId);
-        } else {
-          console.warn(`添加 ${line} 线路失败: ${result.message}`);
-        }
-      } catch (error) {
-        console.warn(`添加 ${line} 线路异常: ${error.message}`);
-      }
+    let chinaRecordId = null;
+    if (chinaRecord.success) {
+      chinaRecordId = chinaRecord.recordId;
+    } else {
+      console.warn(`添加中国地区解析失败: ${chinaRecord.message}`);
     }
 
     return {
       success: true,
-      // 返回第一个成功的 ID 作为 chinaRecordId (数据库只存了一个字段，兼容旧结构)
-      chinaRecordId: chinaRecordIds.length > 0 ? chinaRecordIds[0] : null,
-      overseasRecordId: defaultRecord.recordId, // 这里的 overseasRecordId 实际上存的是默认(回退)记录的 ID
-      warning: chinaRecordIds.length === 0 ? '中国地区(运营商)解析添加失败' : null
+      chinaRecordId: chinaRecordId,
+      overseasRecordId: defaultRecord.recordId,
+      warning: !chinaRecordId ? `中国地区解析添加失败: ${chinaRecord.message}` : null
     };
   } catch (error) {
     return {
