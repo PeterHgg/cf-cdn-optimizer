@@ -35,7 +35,8 @@ async function getClient() {
   if (email && apiKey) {
     if (!cfClient || cfClient.authType !== 'key') {
       console.log('Using Cloudflare Global API Key authentication');
-      cfClient = new Cloudflare({ email, key: apiKey });
+      // Cloudflare v4 SDK requires apiEmail and apiKey
+      cfClient = new Cloudflare({ apiEmail: email, apiKey: apiKey });
       cfClient.authType = 'key';
       cfClient.email = email;
       cfClient.apiKey = apiKey;
