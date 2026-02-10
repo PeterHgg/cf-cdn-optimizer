@@ -20,17 +20,14 @@ async function initDatabase() {
     console.log('📁 数据目录已创建');
   }
 
-  // 检查数据库是否存在
-  if (!fs.existsSync(dbPath)) {
-    console.log('🔄 首次启动，正在初始化数据库...');
-    try {
-      require('./database/migrate');
-      // 等待迁移完成
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      console.log('✅ 数据库初始化完成');
-    } catch (error) {
-      console.error('❌ 数据库初始化失败:', error.message);
-    }
+  // 每次启动都执行迁移（所有建表语句使用 IF NOT EXISTS，安全幂等）
+  console.log('🔄 正在检查数据库结构...');
+  try {
+    const { migrate } = require('./database/migrate');
+    await migrate();
+    console.log('✅ 数据库结构检查完成');
+  } catch (error) {
+    console.error('❌ 数据库初始化失败:', error.message);
   }
 }
 

@@ -151,7 +151,6 @@ if (require.main === module) {
     console.error('❌ 迁移失败:', err.message);
     process.exit(1);
   });
-} else {
-  // 被 require 时只执行迁移，不退出进程
-  migrate();
 }
+
+module.exports = { migrate };
