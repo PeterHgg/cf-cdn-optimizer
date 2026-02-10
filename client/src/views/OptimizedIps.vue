@@ -3,10 +3,10 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>优选 IP 池管理</span>
+          <span>优选域名/IP池管理</span>
           <el-button type="primary" @click="showAddDialog = true">
             <el-icon><Plus /></el-icon>
-            添加优选 IP
+            添加优选域名/IP
           </el-button>
         </div>
       </template>
@@ -48,7 +48,7 @@
     </el-card>
 
     <!-- 添加优选 IP 对话框 -->
-    <el-dialog v-model="showAddDialog" title="添加优选 IP" width="500px">
+    <el-dialog v-model="showAddDialog" title="添加优选域名/IP" width="500px">
       <el-form :model="ipForm" label-width="100px">
         <el-form-item label="类型">
           <el-radio-group v-model="ipForm.type">

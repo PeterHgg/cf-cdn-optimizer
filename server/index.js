@@ -51,6 +51,7 @@ initDatabase().then(() => {
   app.use('/api/aliyun', require('./routes/aliyun'));
   app.use('/api/optimized-ips', require('./routes/optimizedIps'));
   app.use('/api/settings', require('./routes/settings'));
+  app.use('/api/certificates', require('./routes/certificates'));
 
   // 前端路由 - 前端文件打包在可执行文件内，使用 __dirname
   app.get('*', (req, res) => {

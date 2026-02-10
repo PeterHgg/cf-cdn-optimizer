@@ -21,7 +21,11 @@
         </el-menu-item>
         <el-menu-item index="/optimized-ips">
           <el-icon><Connection /></el-icon>
-          <span>优选 IP 池</span>
+          <span>优选域名/IP池</span>
+        </el-menu-item>
+        <el-menu-item index="/certificates">
+          <el-icon><Lock /></el-icon>
+          <span>SSL 证书管理</span>
         </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
@@ -75,7 +79,8 @@ const pageTitle = computed(() => {
   const titles = {
     '/': '仪表盘',
     '/domains': '域名管理',
-    '/optimized-ips': '优选 IP 池',
+    '/optimized-ips': '优选域名/IP池',
+    '/certificates': 'SSL 证书管理',
     '/settings': '系统设置'
   }
   return titles[route.path] || ''

@@ -88,7 +88,7 @@ router.get('/:id', async (req, res) => {
 // 创建新的域名配置
 router.post('/', async (req, res) => {
   try {
-    const { subdomain, rootDomain, fallbackSubdomain, fallbackRootDomain, optimizedIp, customPublicIp } = req.body;
+    const { subdomain, rootDomain, fallbackSubdomain, fallbackRootDomain, optimizedIp, customPublicIp, overwrite } = req.body;
 
     if (!subdomain || !rootDomain || !fallbackSubdomain || !fallbackRootDomain) {
       return res.status(400).json({
@@ -103,15 +103,18 @@ router.post('/', async (req, res) => {
     // 0. Pre-flight Checks (检查记录是否已存在)
 
     // 检查 Aliyun 记录
-    const aliyunCheck = await aliyunService.listDnsRecords(rootDomain, subdomain);
-    if (aliyunCheck.success && aliyunCheck.data && aliyunCheck.data.length > 0) {
-      // 检查是否存在完全匹配的 RR
-      const exists = aliyunCheck.data.some(r => r.RR === subdomain);
-      if (exists) {
-        return res.status(409).json({
-          success: false,
-          message: `阿里云 DNS 记录已存在: ${fullDomain}`
-        });
+    if (!overwrite) {
+      const aliyunCheck = await aliyunService.listDnsRecords(rootDomain, subdomain);
+      if (aliyunCheck.success && aliyunCheck.data && aliyunCheck.data.length > 0) {
+        // 检查是否存在完全匹配的 RR
+        const exists = aliyunCheck.data.some(r => r.RR === subdomain);
+        if (exists) {
+          return res.status(409).json({
+            success: false,
+            code: 'ALIYUN_RECORD_EXISTS',
+            message: `阿里云 DNS 记录已存在: ${fullDomain}`
+          });
+        }
       }
     }
 
@@ -153,8 +156,8 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // 3. 添加验证记录 (Ownership TXT + SSL TXT)
-    const addTxtRecord = async (name, value) => {
+    // 3. 添加验证记录 (Ownership TXT + SSL TXT/CNAME)
+    const addDnsRecordHelper = async (name, type, value) => {
       let rr = name;
       if (rr === rootDomain) {
         rr = '@';
@@ -162,11 +165,11 @@ router.post('/', async (req, res) => {
         rr = rr.slice(0, -(rootDomain.length + 1));
       }
 
-      console.log(`正在添加验证记录: ${rr} TXT ${value}`);
+      console.log(`正在添加验证记录: ${rr} ${type} ${value}`);
       await aliyunService.addDnsRecord(
         rootDomain,
         rr,
-        'TXT',
+        type,
         value
       );
     };
@@ -175,7 +178,7 @@ router.post('/', async (req, res) => {
     if (cfResult.ownershipVerification) {
       const ov = cfResult.ownershipVerification;
       if (ov.type && ov.type.toLowerCase() === 'txt') {
-        await addTxtRecord(ov.name, ov.value);
+        await addDnsRecordHelper(ov.name, 'TXT', ov.value);
       }
     }
 
@@ -183,10 +186,12 @@ router.post('/', async (req, res) => {
     if (cfResult.verificationRecords && Array.isArray(cfResult.verificationRecords)) {
       for (const record of cfResult.verificationRecords) {
         // 尝试多种字段名格式 (txt_name/txt_value 或 name/value)
-        const txtName = record.txt_name || record.name;
-        const txtValue = record.txt_value || record.value;
-        if (txtName && txtValue) {
-          await addTxtRecord(txtName, txtValue);
+        const recordName = record.txt_name || record.name;
+        const recordValue = record.txt_value || record.value;
+        const recordType = record.type || 'TXT'; // Default to TXT
+
+        if (recordName && recordValue) {
+          await addDnsRecordHelper(recordName, recordType.toUpperCase(), recordValue);
         }
       }
     }

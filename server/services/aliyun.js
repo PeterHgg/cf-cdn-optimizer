@@ -200,6 +200,23 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
     // 添加中国地区解析 (解析到优选 IP/域名)
     // 支持单个值或数组（负载均衡）
     const chinaValues = Array.isArray(chinaValue) ? chinaValue : [chinaValue];
+
+    // 校验混合类型和CNAME数量限制
+    const recordTypes = new Set();
+    const validValues = chinaValues.filter(v => v);
+
+    for (const val of validValues) {
+      recordTypes.add(detectRecordType(val));
+    }
+
+    if (recordTypes.has('A') && recordTypes.has('CNAME')) {
+      throw new Error("阿里云不支持同一线路同时配置 A 记录 (IP) 和 CNAME 记录 (域名)");
+    }
+
+    if (recordTypes.has('CNAME') && validValues.length > 10) {
+      throw new Error("阿里云限制同一线路 CNAME 记录最多 10 条");
+    }
+
     let chinaRecordIds = [];
     let lastError = null;
 

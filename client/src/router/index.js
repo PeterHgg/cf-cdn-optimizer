@@ -28,6 +28,11 @@ const routes = [
         component: () => import('@/views/OptimizedIps.vue')
       },
       {
+        path: 'certificates',
+        name: 'Certificates',
+        component: () => import('@/views/Certificates.vue')
+      },
+      {
         path: 'settings',
         name: 'Settings',
         component: () => import('@/views/Settings.vue')

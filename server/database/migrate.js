@@ -69,6 +69,19 @@ async function migrate() {
       )
     `);
 
+    // 证书表
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS certificates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain TEXT NOT NULL,
+        cert_body TEXT NOT NULL,
+        private_key TEXT NOT NULL,
+        type TEXT NOT NULL,
+        expires_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // 插入默认优选 IP/域名
     const defaultIPs = [
       'www.visa.com',

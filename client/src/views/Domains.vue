@@ -292,7 +292,10 @@ async function fetchPublicIp() {
   }
 }
 
-async function addDomain() {
+async function addDomain(overwrite = false) {
+  // 处理点击事件传入的 Event 对象
+  const isOverwrite = overwrite === true
+
   if (!domainForm.value.subdomain || !domainForm.value.rootDomain ||
       !domainForm.value.fallbackSubdomain || !domainForm.value.fallbackRootDomain) {
     ElMessage.warning('请填写完整信息')
@@ -301,7 +304,12 @@ async function addDomain() {
 
   submitting.value = true
   try {
-    const res = await api.post('/domains', domainForm.value)
+    const payload = { ...domainForm.value }
+    if (isOverwrite) {
+      payload.overwrite = true
+    }
+
+    const res = await api.post('/domains', payload)
     if (res.data.success) {
       ElMessage.success('域名配置创建成功')
       showAddDialog.value = false
@@ -329,6 +337,25 @@ async function addDomain() {
     }
   } catch (error) {
     console.error('添加域名失败:', error)
+
+    // 检查是否为阿里云记录已存在错误
+    if (error.response && error.response.status === 409 && error.response.data.code === 'ALIYUN_RECORD_EXISTS') {
+      try {
+        await ElMessageBox.confirm('阿里云已存在该域名的 DNS 记录，是否覆盖？', '提示', {
+          confirmButtonText: '覆盖',
+          cancelButtonText: '取消',
+          type: 'warning'
+        })
+        // 用户确认覆盖，重新提交
+        await addDomain(true)
+        return
+      } catch (e) {
+        if (e !== 'cancel') console.error(e)
+        // 用户取消或出错，停止执行
+        return
+      }
+    }
+
     // Display backend error message (e.g., DNS record already exists)
     if (error.response && error.response.data && error.response.data.message) {
       ElMessage.error(error.response.data.message)

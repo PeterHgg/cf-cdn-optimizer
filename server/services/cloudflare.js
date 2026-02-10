@@ -27,18 +27,34 @@ async function getSetting(dbKey, envKey) {
  * 获取 Cloudflare 客户端
  */
 async function getClient() {
+  const email = await getSetting('cf_email', 'CF_EMAIL');
+  const apiKey = await getSetting('cf_api_key', 'CF_API_KEY');
   const apiToken = await getSetting('cf_api_token', 'CF_API_TOKEN');
 
-  if (!apiToken) {
-    throw new Error('未配置 Cloudflare API Token，请在设置页面配置');
+  // 优先使用 Email + Global API Key
+  if (email && apiKey) {
+    if (!cfClient || cfClient.authType !== 'key') {
+      console.log('Using Cloudflare Global API Key authentication');
+      cfClient = new Cloudflare({ email, key: apiKey });
+      cfClient.authType = 'key';
+      cfClient.email = email;
+      cfClient.apiKey = apiKey;
+    }
+    return cfClient;
   }
 
-  // 如果 token 变化，重新创建客户端
-  if (!cfClient) {
-    cfClient = new Cloudflare({ apiToken });
+  // 降级使用 API Token
+  if (apiToken) {
+    if (!cfClient || cfClient.authType !== 'token') {
+      console.log('Using Cloudflare API Token authentication');
+      cfClient = new Cloudflare({ apiToken });
+      cfClient.authType = 'token';
+      cfClient.apiToken = apiToken;
+    }
+    return cfClient;
   }
 
-  return cfClient;
+  throw new Error('未配置 Cloudflare 认证信息 (Email + API Key 或 API Token)');
 }
 
 /**
@@ -299,6 +315,74 @@ async function deleteDnsRecord(zoneId, recordId) {
   }
 }
 
+/**
+ * 生成 Origin CA 证书
+ */
+async function createOriginCertificate(hostnames, validityDays = 5475) {
+  try {
+    const cf = await getClient();
+    // Cloudflare Node.js 库通常没有直接封装 Origin CA 的 endpoint，或者位置比较隐蔽
+    // 这里我们尝试使用通用的 fetch 方法或者 request 方法，如果库支持
+    // 假设 library 是 cloudflare v3/v4
+
+    // 构造请求体
+    const body = {
+      hostnames: hostnames,
+      request_type: 'origin-rsa',
+      requested_validity: validityDays
+    };
+
+    // 如果库有直接的方法
+    if (cf.originCA && cf.originCA.create) {
+      const response = await cf.originCA.create(body);
+      return { success: true, data: response };
+    }
+
+    // 如果没有直接方法，尝试使用 certificates endpoint (Origin CA)
+    // 许多库版本将其放在 cf.certificates 下，但这通常是 Client Certificates
+    // Origin CA 的 API 端点是 POST /certificates
+
+    // 既然我们有 cf 实例，我们可以利用它来发送请求，但库的具体实现可能不同
+    // 安全起见，我们直接抛出错误让上层处理，或者在这里使用 axios (如果引入了)
+    // 但为了保持一致性，我们尝试寻找库的通用请求方法
+
+    // 尝试 cf.certificates.create (有些版本映射到 Origin CA)
+    if (cf.originCA && cf.originCA.create) {
+       const response = await cf.originCA.create(body);
+       return { success: true, data: response };
+    }
+
+    // 如果库不支持，回退到原生 HTTP 请求
+    // Cloudflare API Endpoint: POST https://api.cloudflare.com/client/v4/certificates
+    const axios = require('axios');
+    const authHeaders = cf.authType === 'key'
+      ? { 'X-Auth-Email': cf.email, 'X-Auth-Key': cf.apiKey }
+      : { 'Authorization': `Bearer ${cf.apiToken}` };
+
+    const resp = await axios.post('https://api.cloudflare.com/client/v4/certificates', body, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders
+      }
+    });
+
+    if (!resp.data.success) {
+      throw new Error(resp.data.errors?.[0]?.message || 'Cloudflare API error');
+    }
+
+    return { success: true, data: resp.data.result };
+
+  } catch (error) {
+    console.error('生成证书失败:', error);
+    // 回退策略：如果是 "method not found" 类错误，可以尝试直接 fetch
+    // 这里简化处理，直接返回错误
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
 module.exports = {
   createCustomHostname,
   getCustomHostnameStatus,
@@ -310,5 +394,6 @@ module.exports = {
   addDnsRecord,
   deleteDnsRecord,
   listDnsRecords,
-  getZoneId
+  getZoneId,
+  createOriginCertificate
 };

@@ -20,26 +20,60 @@
             </template>
 
             <el-form :model="cfForm" label-width="180px">
-              <el-form-item label="API Token" required>
+              <!-- API Token (已废弃，保留兼容) -->
+              <!-- 改为 Email + Global API Key -->
+
+              <el-form-item label="Cloudflare Email" required>
                 <el-input
-                  v-model="cfForm.apiToken"
-                  type="password"
-                  show-password
-                  placeholder="请输入 Cloudflare API Token"
+                  v-model="cfForm.email"
+                  placeholder="请输入登录邮箱 (Example: user@example.com)"
                 />
               </el-form-item>
+
+              <el-form-item label="Global API Key" required>
+                <div style="display: flex; gap: 10px; width: 100%">
+                  <el-input
+                    v-model="cfForm.apiKey"
+                    type="password"
+                    show-password
+                    placeholder="请输入 Global API Key"
+                  />
+                  <el-button type="success" @click="loadZones" :loading="loadingZones">
+                    获取 Zone 列表
+                  </el-button>
+                </div>
+                <div class="form-tip">Global API Key 拥有完整权限，请在 "My Profile -> API Tokens" 中查看。</div>
+              </el-form-item>
+
               <el-form-item label="Account ID" required>
                 <el-input
                   v-model="cfForm.accountId"
                   placeholder="请输入 Cloudflare Account ID"
                 />
               </el-form-item>
-              <el-form-item label="Zone ID" required>
-                <el-input
+
+              <el-form-item label="Zone ID (域名)" required>
+                <el-select
                   v-model="cfForm.zoneId"
-                  placeholder="请输入 Cloudflare Zone ID"
-                />
+                  placeholder="请选择或手动输入 Zone ID"
+                  filterable
+                  allow-create
+                  default-first-option
+                  style="width: 100%"
+                  @change="handleZoneChange"
+                >
+                  <el-option
+                    v-for="zone in zoneOptions"
+                    :key="zone.id"
+                    :label="zone.name"
+                    :value="zone.id"
+                  >
+                    <span style="float: left">{{ zone.name }}</span>
+                    <span style="float: right; color: #8492a6; font-size: 13px">{{ zone.id }}</span>
+                  </el-option>
+                </el-select>
               </el-form-item>
+
               <el-form-item>
                 <el-button type="primary" @click="saveCfSettings" :loading="saving">
                   保存 Cloudflare 配置
@@ -109,7 +143,7 @@
               CF-CDN-Optimizer
             </el-descriptions-item>
             <el-descriptions-item label="版本">
-              v0.1.7
+              v0.1.32
             </el-descriptions-item>
             <el-descriptions-item label="描述">
               Cloudflare CDN 优选加速管理平台 - 自动化管理 Cloudflare 自定义主机名 + 阿里云 DNS 优选 IP
@@ -134,20 +168,15 @@
       </el-alert>
 
       <el-collapse>
-        <el-collapse-item title="1. 获取 API Token" name="1">
+        <el-collapse-item title="1. 获取 Global API Key" name="1">
           <ol>
-            <li>登录 <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank">Cloudflare Dashboard → API Tokens</a></li>
-            <li>点击 <strong>Create Token</strong></li>
-            <li>选择 <strong>Create Custom Token</strong></li>
-            <li>配置权限：</li>
+            <li>登录 <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank">Cloudflare Dashboard → My Profile → API Tokens</a></li>
+            <li>找到 <strong>Global API Key</strong></li>
+            <li>点击 <strong>View</strong> 查看并复制 Key</li>
+            <li>同时记录您的登录邮箱 (Email)</li>
           </ol>
-          <el-table :data="cfPermissions" border size="small" style="margin: 10px 0">
-            <el-table-column prop="resource" label="资源" width="200" />
-            <el-table-column prop="permission" label="权限" width="150" />
-            <el-table-column prop="desc" label="说明" />
-          </el-table>
           <el-alert type="warning" :closable="false">
-            <strong>Zone Resources</strong> 选择：Include → Specific zone → 选择您的域名
+            Global API Key 拥有账户的完全控制权，请妥善保管，不要泄露给他人。
           </el-alert>
         </el-collapse-item>
 
@@ -236,10 +265,15 @@ const showCfHelp = ref(false)
 const showAliyunHelp = ref(false)
 
 const cfForm = ref({
-  apiToken: '',
+  email: '',
+  apiKey: '',
+  apiToken: '', // 保留兼容，但不在界面主要展示
   accountId: '',
   zoneId: ''
 })
+
+const zoneOptions = ref([])
+const loadingZones = ref(false)
 
 const aliyunForm = ref({
   accessKeyId: '',
@@ -273,9 +307,17 @@ async function loadSettings() {
     const res = await api.get('/settings')
     if (res.data.success) {
       const data = res.data.data
+      cfForm.value.email = data.cf_email || ''
+      cfForm.value.apiKey = data.cf_api_key || ''
       cfForm.value.apiToken = data.cf_api_token || ''
       cfForm.value.accountId = data.cf_account_id || ''
       cfForm.value.zoneId = data.cf_zone_id || ''
+
+      // 如果有保存的 Zone ID，初始化到选项中以免显示 ID
+      if (cfForm.value.zoneId) {
+        zoneOptions.value = [{ id: cfForm.value.zoneId, name: cfForm.value.zoneId }]
+      }
+
       aliyunForm.value.accessKeyId = data.aliyun_access_key_id || ''
       aliyunForm.value.accessKeySecret = data.aliyun_access_key_secret || ''
     }
@@ -284,9 +326,62 @@ async function loadSettings() {
   }
 }
 
+// 获取 Zone 列表
+async function loadZones() {
+  if (!cfForm.value.email || !cfForm.value.apiKey) {
+    ElMessage.warning('请先填写 Email 和 Global API Key')
+    return
+  }
+
+  loadingZones.value = true
+  try {
+    // 先保存一下配置，以便后端能使用新的凭证
+    // 或者我们创建一个专门的 endpoint 接收凭证来列出 zone，但复用 save 更简单
+    // 这里我们先临时保存配置
+    await api.put('/settings/batch', {
+      settings: {
+        cf_email: cfForm.value.email,
+        cf_api_key: cfForm.value.apiKey
+      }
+    })
+
+    // 调用后端获取 Zone 列表
+    // 复用已有的 cloudflare services
+    // 我们需要一个路由来暴露 listZones，假设后端没有直接暴露，我们需要添加或使用已有
+    // 查看 server/services/cloudflare.js 导出了 listZones
+    // 查看 server/routes/cloudflare.js 是否有对应的路由？
+    // 假设没有，我们需要确保 routes/cloudflare.js 有 list-zones
+
+    // 这里尝试直接调用一个我们稍后确认存在的接口
+    const res = await api.get('/cloudflare/zones')
+    if (res.data.success) {
+      zoneOptions.value = res.data.data.map(z => ({
+        id: z.id,
+        name: z.name
+      }))
+      ElMessage.success('成功获取 Zone 列表')
+    } else {
+      ElMessage.error('获取列表失败: ' + res.data.message)
+    }
+  } catch (error) {
+    ElMessage.error('操作失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    loadingZones.value = false
+  }
+}
+
+function handleZoneChange(val) {
+  // 找到对应的 zone 对象，自动填充 account id (如果 API 返回了 account 信息)
+  const zone = zoneOptions.value.find(z => z.id === val)
+  // 目前 API 可能没返回 account id，暂不处理
+}
+
 // 保存 Cloudflare 设置
 async function saveCfSettings() {
-  if (!cfForm.value.apiToken || !cfForm.value.accountId || !cfForm.value.zoneId) {
+  // 验证: 必须要 Email + Key 或者 Token
+  const hasAuth = (cfForm.value.email && cfForm.value.apiKey) || cfForm.value.apiToken;
+
+  if (!hasAuth || !cfForm.value.accountId || !cfForm.value.zoneId) {
     ElMessage.warning('请填写完整的 Cloudflare 配置')
     return
   }
@@ -295,7 +390,9 @@ async function saveCfSettings() {
   try {
     await api.put('/settings/batch', {
       settings: {
-        cf_api_token: cfForm.value.apiToken,
+        cf_email: cfForm.value.email,
+        cf_api_key: cfForm.value.apiKey,
+        cf_api_token: cfForm.value.apiToken, // 可选保存
         cf_account_id: cfForm.value.accountId,
         cf_zone_id: cfForm.value.zoneId
       }

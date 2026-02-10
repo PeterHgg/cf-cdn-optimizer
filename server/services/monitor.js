@@ -80,10 +80,35 @@ async function checkDomain(domainOrId) {
         const vrs = status.data.ssl.validation_records;
         if (Array.isArray(vrs)) {
             for (const vr of vrs) {
-                const txtName = vr.txt_name || vr.name;
-                const txtValue = vr.txt_value || vr.value;
-                if (txtName && txtValue) {
-                    await ensureTxtRecord(txtName, txtValue);
+                const recordName = vr.txt_name || vr.name;
+                const recordValue = vr.txt_value || vr.value;
+                const recordType = vr.type; // CNAME or TXT
+
+                if (recordName && recordValue) {
+                    if (recordType === 'CNAME') {
+                        // 处理 CNAME 验证记录
+                        let rr = recordName;
+                        const rootDomain = domain.root_domain;
+                        if (rr === rootDomain) {
+                            rr = '@';
+                        } else if (rr.endsWith(`.${rootDomain}`)) {
+                            rr = rr.slice(0, -(rootDomain.length + 1));
+                        }
+
+                        // 检查是否存在
+                        const existing = await aliyunService.listDnsRecords(rootDomain, rr);
+                        const exists = existing.success && existing.data && existing.data.some(
+                            r => r.type === 'CNAME' && r.RR === rr && r.Value === recordValue
+                        );
+
+                        if (!exists) {
+                            console.log(`[Monitor] 自动修复: 添加缺失的验证记录 ${rr} CNAME ${recordValue}`);
+                            await aliyunService.addDnsRecord(rootDomain, rr, 'CNAME', recordValue);
+                        }
+                    } else {
+                        // 默认为 TXT
+                        await ensureTxtRecord(recordName, recordValue);
+                    }
                 }
             }
         }
