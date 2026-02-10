@@ -198,28 +198,40 @@ async function setupGeoDns(domainName, subdomain, chinaValue, overseasValue) {
     );
 
     // 添加中国地区解析 (解析到优选 IP/域名)
-    const chinaType = detectRecordType(chinaValue);
-    console.log(`添加中国地区解析 (优选): ${chinaValue} (${chinaType})`);
-    const chinaRecord = await addDnsRecord(
-      domainName,
-      subdomain,
-      chinaType,
-      chinaValue,
-      'internal' // 阿里云 "中国地区" 线路代码
-    );
+    // 支持单个值或数组（负载均衡）
+    const chinaValues = Array.isArray(chinaValue) ? chinaValue : [chinaValue];
+    let chinaRecordIds = [];
+    let lastError = null;
 
-    let chinaRecordId = null;
-    if (chinaRecord.success) {
-      chinaRecordId = chinaRecord.recordId;
-    } else {
-      console.warn(`添加中国地区解析失败: ${chinaRecord.message}`);
+    for (const val of chinaValues) {
+      if (!val) continue;
+
+      const chinaType = detectRecordType(val);
+      console.log(`添加中国地区解析 (优选): ${val} (${chinaType})`);
+
+      const chinaRecord = await addDnsRecord(
+        domainName,
+        subdomain,
+        chinaType,
+        val,
+        'internal' // 阿里云 "中国地区" 线路代码
+      );
+
+      if (chinaRecord.success) {
+        chinaRecordIds.push(chinaRecord.recordId);
+      } else {
+        console.warn(`添加中国地区解析失败 (${val}): ${chinaRecord.message}`);
+        lastError = chinaRecord.message;
+      }
     }
+
+    const chinaRecordIdStr = chinaRecordIds.length > 0 ? chinaRecordIds.join(',') : null;
 
     return {
       success: true,
-      chinaRecordId: chinaRecordId,
+      chinaRecordId: chinaRecordIdStr,
       overseasRecordId: defaultRecord.recordId,
-      warning: !chinaRecordId ? `中国地区解析添加失败: ${chinaRecord.message}` : null
+      warning: chinaRecordIds.length === 0 ? `中国地区解析添加失败: ${lastError}` : null
     };
   } catch (error) {
     return {

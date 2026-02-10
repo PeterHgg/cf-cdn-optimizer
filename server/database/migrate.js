@@ -71,18 +71,46 @@ async function migrate() {
 
     // 插入默认优选 IP/域名
     const defaultIPs = [
-      { ip: 'japan.com', type: 'domain', region: 'JP' },
-      { ip: 'singapore.com', type: 'domain', region: 'SG' },
-      { ip: 'usa.com', type: 'domain', region: 'US' },
-      { ip: '104.16.0.0', type: 'ip', region: 'Global' },
-      { ip: '172.64.0.0', type: 'ip', region: 'Global' }
+      'www.visa.com',
+      'ip.sb',
+      'www.udacity.com',
+      'singapore.com',
+      'time.is',
+      'www.whoer.net',
+      'cdnjs.com',
+      'store.epicgames.com',
+      'ai.cloudflare.com',
+      'www.wto.org',
+      'www.gco.gov.qa',
+      'support.cloudflare.com',
+      'pages.cloudflare.com',
+      'www.visa.com.tw',
+      'www.racknerd.com',
+      'workers.cloudflare.com',
+      'icook.tw',
+      'www.whatismyip.com',
+      'www.ipget.net',
+      'community.cloudflare.com',
+      'www.fortnite.com',
+      'icook.hk',
+      'www.visakorea.com',
+      'ns.cloudflare.com',
+      'japan.com',
+      'portal.cloudflarepartners.com',
+      'developers.cloudflare.com',
+      'gur.gov.ua'
     ];
 
-    for (const item of defaultIPs) {
+    // 清空旧的默认数据 (可选，这里选择保留用户自己添加的，只确保默认的存在)
+    // 或者干脆清空重建默认池
+    // 简单起见，我们先检查表是否为空，如果不为空就不插入了？
+    // 为了响应用户需求，我们把这些作为 domain 类型插入
+
+    for (const domain of defaultIPs) {
       await dbRun(`
         INSERT OR IGNORE INTO optimized_ips (ip_or_domain, type, region, is_active)
-        VALUES (?, ?, ?, 1)
-      `, [item.ip, item.type, item.region]);
+        VALUES (?, 'domain', 'Global', 1)
+      `, [domain]);
     }
 
     // 创建默认管理员账户（用户名: admin, 密码: admin123）

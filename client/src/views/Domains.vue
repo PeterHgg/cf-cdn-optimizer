@@ -30,8 +30,15 @@
         <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="viewDetails(row)">详情</el-button>
-            <el-button size="small" @click="checkVerification(row)">验证</el-button>
-            <el-button size="small" type="danger" @click="deleteDomain(row)">删除</el-button>
+            <el-button
+              size="small"
+              type="danger"
+              @click="deleteDomain(row)"
+              :loading="deletingId === row.id"
+              :disabled="deletingId !== null && deletingId !== row.id"
+            >
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -82,8 +89,19 @@
           </el-row>
         </el-form-item>
 
+        <el-form-item label="回退源IP" required>
+          <el-input v-model="domainForm.customPublicIp" placeholder="请输入回退源IP" />
+        </el-form-item>
+
         <el-form-item label="优选 IP">
-          <el-select v-model="domainForm.optimizedIp" placeholder="选择优选 IP（可选）" clearable style="width: 100%">
+          <el-select
+            v-model="domainForm.optimizedIp"
+            placeholder="选择优选 IP（可选）"
+            clearable
+            multiple
+            collapse-tags
+            style="width: 100%"
+          >
             <el-option
               v-for="ip in optimizedIps"
               :key="ip.id"
@@ -162,7 +180,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 
@@ -172,17 +190,20 @@ const cfZones = ref([])
 const optimizedIps = ref([])
 const loading = ref(false)
 const submitting = ref(false)
+const deletingId = ref(null)
 const showAddDialog = ref(false)
 const showDetailDialog = ref(false)
 const showOriginRuleDialog = ref(false)
 const currentDomain = ref(null)
+let pollTimer = null
 
 const domainForm = ref({
   subdomain: '',
   rootDomain: '',
   fallbackSubdomain: '',
   fallbackRootDomain: '',
-  optimizedIp: ''
+  optimizedIp: [],
+  customPublicIp: ''
 })
 
 const originRuleForm = ref({
@@ -260,6 +281,17 @@ async function loadCfZones() {
   }
 }
 
+async function fetchPublicIp() {
+  try {
+    const res = await api.get('/domains/public-ip')
+    if (res.data.success) {
+      domainForm.value.customPublicIp = res.data.ip
+    }
+  } catch (error) {
+    console.error('获取公网IP失败:', error)
+  }
+}
+
 async function addDomain() {
   if (!domainForm.value.subdomain || !domainForm.value.rootDomain ||
       !domainForm.value.fallbackSubdomain || !domainForm.value.fallbackRootDomain) {
@@ -273,12 +305,17 @@ async function addDomain() {
     if (res.data.success) {
       ElMessage.success('域名配置创建成功')
       showAddDialog.value = false
+
+      // Save current public IP
+      const currentIp = domainForm.value.customPublicIp
+
       domainForm.value = {
         subdomain: '',
         rootDomain: '',
         fallbackSubdomain: '',
         fallbackRootDomain: '',
-        optimizedIp: ''
+        optimizedIp: [],
+        customPublicIp: currentIp
       }
       loadDomains()
 
@@ -333,6 +370,7 @@ async function deleteDomain(domain) {
       type: 'warning'
     })
 
+    deletingId.value = domain.id
     const res = await api.delete(`/domains/${domain.id}`)
     if (res.data.success) {
       ElMessage.success('删除成功')
@@ -341,7 +379,10 @@ async function deleteDomain(domain) {
   } catch (error) {
     if (error !== 'cancel') {
       console.error('删除域名失败:', error)
+      ElMessage.error('删除域名失败')
     }
+  } finally {
+    deletingId.value = null
   }
 }
 
@@ -385,6 +426,16 @@ onMounted(() => {
   loadOptimizedIps()
   loadAliyunDomains()
   loadCfZones()
+  fetchPublicIp()
+
+  // Start polling
+  pollTimer = setInterval(() => {
+    loadDomains()
+  }, 10000)
+})
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
 })
 </script>
 

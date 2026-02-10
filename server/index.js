@@ -76,6 +76,7 @@ initDatabase().then(() => {
 
   // 启动定时任务
   require('./tasks/ipUpdater');
+  require('./services/monitor').start();
 }).catch(error => {
   console.error('❌ 服务启动失败:', error);
   process.exit(1);
