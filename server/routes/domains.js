@@ -72,12 +72,44 @@ async function startVerificationPolling(domainId) {
             // 检查是否已存在
             const existing = await aliyunService.listDnsRecords(rootDomain, rr);
             const exists = existing.success && existing.data && existing.data.some(
-              r => r.type === 'TXT' && r.RR === rr
+              r => r.type === 'TXT' && r.RR === rr && r.Value === ov.value
             );
 
             if (!exists) {
               console.log(`[自动验证] 补充 ownership 记录: ${rr} TXT ${ov.value}`);
               await aliyunService.addDnsRecord(rootDomain, rr, 'TXT', ov.value);
+            }
+          }
+        }
+
+        // 如果 SSL 还在 pending_validation，补充 SSL 验证 TXT 记录
+        if (sslStatus === 'pending_validation' && status.data && status.data.ssl && status.data.ssl.validation_records) {
+          const vrs = status.data.ssl.validation_records;
+          if (Array.isArray(vrs)) {
+            for (const vr of vrs) {
+              const txtName = vr.txt_name || vr.name;
+              const txtValue = vr.txt_value || vr.value;
+
+              if (txtName && txtValue) {
+                let rr = txtName;
+                const rootDomain = domain.root_domain;
+                if (rr === rootDomain) {
+                  rr = '@';
+                } else if (rr.endsWith(`.${rootDomain}`)) {
+                  rr = rr.slice(0, -(rootDomain.length + 1));
+                }
+
+                // 检查是否已存在
+                const existing = await aliyunService.listDnsRecords(rootDomain, rr);
+                const exists = existing.success && existing.data && existing.data.some(
+                  r => r.type === 'TXT' && r.RR === rr && r.Value === txtValue
+                );
+
+                if (!exists) {
+                  console.log(`[自动验证] 补充 SSL 验证记录: ${rr} TXT ${txtValue}`);
+                  await aliyunService.addDnsRecord(rootDomain, rr, 'TXT', txtValue);
+                }
+              }
             }
           }
         }
