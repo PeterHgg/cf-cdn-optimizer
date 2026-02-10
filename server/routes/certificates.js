@@ -4,6 +4,25 @@ const cfService = require('../services/cloudflare');
 
 const router = express.Router();
 
+/**
+ * 从 PEM 证书中解析过期时间
+ */
+function parseCertExpiry(pemCert) {
+  try {
+    // Node.js 15+ 支持 X509Certificate
+    if (typeof crypto !== 'undefined') {
+      const crypto = require('crypto');
+      if (crypto.X509Certificate) {
+        const x509 = new crypto.X509Certificate(pemCert);
+        return x509.validTo; // 返回如 "Feb 10 00:00:00 2041 GMT"
+      }
+    }
+  } catch (e) {
+    console.warn('解析证书过期时间失败:', e.message);
+  }
+  return null;
+}
+
 // 获取所有证书
 router.get('/', async (req, res) => {
   try {
@@ -65,10 +84,13 @@ router.post('/upload', async (req, res) => {
       return res.status(400).json({ success: false, message: '请填写完整信息' });
     }
 
+    // 从证书中解析过期时间
+    const expiresAt = parseCertExpiry(cert);
+
     await dbRun(`
-      INSERT INTO certificates (domain, cert_body, private_key, type)
-      VALUES (?, ?, ?, 'custom')
-    `, [domain, cert, key]);
+      INSERT INTO certificates (domain, cert_body, private_key, type, expires_at)
+      VALUES (?, ?, ?, 'custom', ?)
+    `, [domain, cert, key, expiresAt]);
 
     res.json({ success: true, message: '证书导入成功' });
   } catch (error) {
