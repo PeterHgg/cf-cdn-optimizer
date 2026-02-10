@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const { dbRun, dbAll, dbGet } = require('../database/db');
 const cfService = require('../services/cloudflare');
 
@@ -9,13 +10,10 @@ const router = express.Router();
  */
 function parseCertExpiry(pemCert) {
   try {
-    // Node.js 15+ 支持 X509Certificate
-    if (typeof crypto !== 'undefined') {
-      const crypto = require('crypto');
-      if (crypto.X509Certificate) {
-        const x509 = new crypto.X509Certificate(pemCert);
-        return x509.validTo; // 返回如 "Feb 10 00:00:00 2041 GMT"
-      }
+    if (crypto.X509Certificate) {
+      const x509 = new crypto.X509Certificate(pemCert);
+      // validTo 格式如 "Feb 10 00:00:00 2041 GMT"，转为 ISO 字符串
+      return new Date(x509.validTo).toISOString();
     }
   } catch (e) {
     console.warn('解析证书过期时间失败:', e.message);

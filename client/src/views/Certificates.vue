@@ -127,7 +127,6 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
-import moment from 'moment'
 
 const certs = ref([])
 const loading = ref(false)
@@ -150,7 +149,10 @@ const importForm = ref({
 
 function formatDate(date) {
   if (!date) return '-'
-  return moment(date).format('YYYY-MM-DD HH:mm:ss')
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return '-'
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 async function loadCerts() {
