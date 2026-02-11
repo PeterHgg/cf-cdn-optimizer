@@ -76,11 +76,47 @@ router.put('/batch', async (req, res) => {
 // 保存面板 HTTPS 配置并重启服务
 router.put('/panel-https', async (req, res) => {
   try {
-    const { certPath, keyPath } = req.body;
+    const { mode, certificateId, certPath, keyPath } = req.body;
     const fs = require('fs');
+    const path = require('path');
 
-    if (certPath && keyPath) {
-      // 验证文件是否存在
+    if (mode === 'clear') {
+      // 清除 HTTPS 配置，回退到 HTTP
+      await dbRun("DELETE FROM settings WHERE key IN ('panel_cert_path', 'panel_key_path', 'panel_cert_id')");
+    } else if (mode === 'cert_id') {
+      // 从证书库选择模式
+      if (!certificateId) {
+        return res.status(400).json({ success: false, message: '请选择一个证书' });
+      }
+
+      const cert = await dbGet('SELECT cert_body, private_key FROM certificates WHERE id = ?', [certificateId]);
+      if (!cert) {
+        return res.status(404).json({ success: false, message: '证书不存在' });
+      }
+      if (!cert.cert_body || !cert.private_key) {
+        return res.status(400).json({ success: false, message: '证书数据不完整，缺少证书内容或私钥' });
+      }
+
+      // 将证书写入 data 目录
+      const dataDir = path.join(process.cwd(), 'data');
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+
+      const certFilePath = path.join(dataDir, 'panel_cert.pem');
+      const keyFilePath = path.join(dataDir, 'panel_key.pem');
+      fs.writeFileSync(certFilePath, cert.cert_body);
+      fs.writeFileSync(keyFilePath, cert.private_key);
+
+      await dbRun("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('panel_cert_path', ?, CURRENT_TIMESTAMP)", [certFilePath]);
+      await dbRun("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('panel_key_path', ?, CURRENT_TIMESTAMP)", [keyFilePath]);
+      await dbRun("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('panel_cert_id', ?, CURRENT_TIMESTAMP)", [String(certificateId)]);
+    } else {
+      // 文件路径模式
+      if (!certPath || !keyPath) {
+        return res.status(400).json({ success: false, message: '请填写证书和私钥路径' });
+      }
+
       if (!fs.existsSync(certPath)) {
         return res.status(400).json({ success: false, message: `证书文件不存在: ${certPath}` });
       }
@@ -90,9 +126,7 @@ router.put('/panel-https', async (req, res) => {
 
       await dbRun("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('panel_cert_path', ?, CURRENT_TIMESTAMP)", [certPath]);
       await dbRun("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('panel_key_path', ?, CURRENT_TIMESTAMP)", [keyPath]);
-    } else {
-      // 清除 HTTPS 配置，回退到 HTTP
-      await dbRun("DELETE FROM settings WHERE key IN ('panel_cert_path', 'panel_key_path')");
+      await dbRun("DELETE FROM settings WHERE key = 'panel_cert_id'");
     }
 
     // 先返回响应，然后延迟重启

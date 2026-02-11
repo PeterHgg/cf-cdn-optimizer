@@ -135,12 +135,33 @@
             </el-alert>
 
             <el-form :model="httpsForm" label-width="120px" style="max-width: 600px">
-              <el-form-item label="证书文件路径">
-                <el-input v-model="httpsForm.certPath" placeholder="例如: /root/cert.pem" />
+              <el-form-item label="证书来源">
+                <el-radio-group v-model="httpsForm.mode">
+                  <el-radio-button value="cert_id">从证书库选择</el-radio-button>
+                  <el-radio-button value="file_path">文件路径</el-radio-button>
+                </el-radio-group>
               </el-form-item>
-              <el-form-item label="私钥文件路径">
-                <el-input v-model="httpsForm.keyPath" placeholder="例如: /root/key.pem" />
+
+              <el-form-item v-if="httpsForm.mode === 'cert_id'" label="选择证书">
+                <el-select v-model="httpsForm.certificateId" placeholder="选择已有证书" style="width: 100%">
+                  <el-option
+                    v-for="cert in httpsCerts"
+                    :key="cert.id"
+                    :label="`${cert.domain} (${cert.type === 'origin' ? 'Origin CA' : '自定义'})`"
+                    :value="cert.id"
+                  />
+                </el-select>
               </el-form-item>
+
+              <template v-if="httpsForm.mode === 'file_path'">
+                <el-form-item label="证书文件路径">
+                  <el-input v-model="httpsForm.certPath" placeholder="例如: /root/cert.pem" />
+                </el-form-item>
+                <el-form-item label="私钥文件路径">
+                  <el-input v-model="httpsForm.keyPath" placeholder="例如: /root/key.pem" />
+                </el-form-item>
+              </template>
+
               <el-form-item>
                 <el-button type="primary" @click="saveHttpsConfig" :loading="savingHttps">
                   保存并重启
@@ -152,13 +173,13 @@
             </el-form>
 
             <el-alert
-              v-if="httpsForm.certPath && httpsForm.keyPath"
+              v-if="httpsForm.certPath || httpsForm.certificateId"
               type="success"
               :closable="false"
               style="margin-top: 10px"
             >
               <template #title>
-                当前已配置 HTTPS 证书: {{ httpsForm.certPath }}
+                当前已配置 HTTPS：{{ httpsForm.mode === 'cert_id' ? '证书库 ID ' + httpsForm.certificateId : httpsForm.certPath }}
               </template>
             </el-alert>
           </el-card>
@@ -187,7 +208,7 @@
               CF-CDN-Optimizer
             </el-descriptions-item>
             <el-descriptions-item label="版本">
-              v0.1.41
+              v0.1.42
             </el-descriptions-item>
             <el-descriptions-item label="描述">
               Cloudflare CDN 优选加速管理平台 - 自动化管理 Cloudflare 自定义主机名 + 阿里云 DNS 优选 IP
@@ -310,9 +331,13 @@ const showAliyunHelp = ref(false)
 const savingHttps = ref(false)
 
 const httpsForm = ref({
+  mode: 'cert_id',
+  certificateId: null,
   certPath: '',
   keyPath: ''
 })
+
+const httpsCerts = ref([])
 
 const cfForm = ref({
   email: '',
@@ -373,6 +398,8 @@ async function loadSettings() {
 
       httpsForm.value.certPath = data.panel_cert_path || ''
       httpsForm.value.keyPath = data.panel_key_path || ''
+      httpsForm.value.certificateId = data.panel_cert_id ? parseInt(data.panel_cert_id) : null
+      httpsForm.value.mode = data.panel_cert_id ? 'cert_id' : (data.panel_cert_path ? 'file_path' : 'cert_id')
     }
   } catch (error) {
     console.error('加载设置失败:', error)
@@ -537,15 +564,38 @@ async function testAliyun() {
   }
 }
 
+async function loadHttpsCerts() {
+  try {
+    const res = await api.get('/certificates')
+    if (res.data.success) {
+      httpsCerts.value = res.data.data
+    }
+  } catch (error) {
+    console.error('加载证书列表失败:', error)
+  }
+}
+
 async function saveHttpsConfig() {
-  if (!httpsForm.value.certPath || !httpsForm.value.keyPath) {
-    ElMessage.warning('请填写证书和私钥路径')
-    return
+  if (httpsForm.value.mode === 'cert_id') {
+    if (!httpsForm.value.certificateId) {
+      ElMessage.warning('请选择一个证书')
+      return
+    }
+  } else {
+    if (!httpsForm.value.certPath || !httpsForm.value.keyPath) {
+      ElMessage.warning('请填写证书和私钥路径')
+      return
+    }
   }
 
   savingHttps.value = true
   try {
-    const res = await api.put('/settings/panel-https', httpsForm.value)
+    const res = await api.put('/settings/panel-https', {
+      mode: httpsForm.value.mode,
+      certificateId: httpsForm.value.certificateId,
+      certPath: httpsForm.value.certPath,
+      keyPath: httpsForm.value.keyPath
+    })
     if (res.data.success) {
       ElMessage.success(res.data.message)
     }
@@ -559,10 +609,12 @@ async function saveHttpsConfig() {
 async function clearHttpsConfig() {
   savingHttps.value = true
   try {
-    const res = await api.put('/settings/panel-https', { certPath: '', keyPath: '' })
+    const res = await api.put('/settings/panel-https', { mode: 'clear' })
     if (res.data.success) {
       httpsForm.value.certPath = ''
       httpsForm.value.keyPath = ''
+      httpsForm.value.certificateId = null
+      httpsForm.value.mode = 'cert_id'
       ElMessage.success('已关闭 HTTPS，服务正在重启为 HTTP 模式...')
     }
   } catch (error) {
@@ -600,6 +652,7 @@ async function changePassword() {
 
 onMounted(() => {
   loadSettings()
+  loadHttpsCerts()
 })
 </script>
 
