@@ -13,6 +13,7 @@
             placeholder="用户名"
             prefix-icon="User"
             size="large"
+            :disabled="show2FA"
           />
         </el-form-item>
 
@@ -23,7 +24,19 @@
             placeholder="密码"
             prefix-icon="Lock"
             size="large"
+            :disabled="show2FA"
             @keyup.enter="handleLogin"
+          />
+        </el-form-item>
+
+        <el-form-item v-if="show2FA">
+          <el-input
+            v-model="loginForm.totpCode"
+            placeholder="请输入6位验证码"
+            size="large"
+            maxlength="6"
+            @keyup.enter="handleLogin"
+            style="text-align: center; letter-spacing: 4px"
           />
         </el-form-item>
 
@@ -35,7 +48,13 @@
             @click="handleLogin"
             style="width: 100%"
           >
-            登录
+            {{ show2FA ? '验证' : '登录' }}
+          </el-button>
+        </el-form-item>
+
+        <el-form-item v-if="show2FA">
+          <el-button size="large" @click="back2Login" style="width: 100%">
+            返回
           </el-button>
         </el-form-item>
       </el-form>
@@ -53,10 +72,12 @@ const router = useRouter()
 const authStore = useAuthStore()
 const formRef = ref()
 const loading = ref(false)
+const show2FA = ref(false)
 
 const loginForm = reactive({
   username: '',
-  password: ''
+  password: '',
+  totpCode: ''
 })
 
 const rules = {
@@ -64,21 +85,39 @@ const rules = {
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
 }
 
+function back2Login() {
+  show2FA.value = false
+  loginForm.totpCode = ''
+}
+
 async function handleLogin() {
   try {
     await formRef.value.validate()
     loading.value = true
 
-    const success = await authStore.login(loginForm.username, loginForm.password)
+    if (show2FA.value && (!loginForm.totpCode || loginForm.totpCode.length !== 6)) {
+      ElMessage.warning('请输入6位验证码')
+      return
+    }
 
-    if (success) {
+    const data = await authStore.login(
+      loginForm.username,
+      loginForm.password,
+      show2FA.value ? loginForm.totpCode : undefined
+    )
+
+    if (data.success) {
+      authStore.setAuth(data)
       ElMessage.success('登录成功')
       router.push('/')
+    } else if (data.requires2FA) {
+      show2FA.value = true
+      ElMessage.info('请输入两步验证码')
     } else {
-      ElMessage.error('用户名或密码错误')
+      ElMessage.error(data.message || '登录失败')
     }
   } catch (error) {
-    console.error('登录失败:', error)
+    ElMessage.error(error.response?.data?.message || '登录失败')
   } finally {
     loading.value = false
   }
@@ -115,5 +154,4 @@ async function handleLogin() {
   font-size: 14px;
   color: #909399;
 }
-
 </style>

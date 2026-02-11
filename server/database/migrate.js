@@ -106,6 +106,21 @@ async function migrate() {
       await dbRun("ALTER TABLE domain_configs ADD COLUMN origin_port INTEGER");
     }
 
+    // 为 users 表添加 TOTP 两步验证字段（兼容旧数据库）
+    const userColumns = await new Promise((resolve, reject) => {
+      db.all("PRAGMA table_info(users)", (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows.map(r => r.name));
+      });
+    });
+
+    if (!userColumns.includes('totp_secret')) {
+      await dbRun("ALTER TABLE users ADD COLUMN totp_secret TEXT");
+    }
+    if (!userColumns.includes('totp_enabled')) {
+      await dbRun("ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0");
+    }
+
     // 插入默认优选 IP/域名
     const defaultIPs = [
       'www.visa.com',

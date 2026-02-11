@@ -189,29 +189,57 @@
           <el-card shadow="never" style="margin-bottom: 20px">
             <template #header>
               <div class="card-header">
-                <span>访问令牌</span>
+                <span>两步验证 (2FA)</span>
+                <el-tag v-if="twoFAEnabled" type="success">已启用</el-tag>
+                <el-tag v-else type="info">未启用</el-tag>
               </div>
             </template>
 
             <el-alert type="info" :closable="false" style="margin-bottom: 20px">
               <template #title>
-                设置6位数字访问令牌后，访问面板前需要先验证令牌，提升安全性。清空令牌即关闭此功能。
+                启用两步验证后，登录时需要输入 Google Authenticator / Microsoft Authenticator 等应用生成的6位验证码。
               </template>
             </el-alert>
 
-            <el-form :model="tokenForm" label-width="120px" style="max-width: 500px">
-              <el-form-item label="访问令牌">
-                <el-input
-                  v-model="tokenForm.token"
-                  :placeholder="tokenConfigured ? '已配置（留空不修改，输入新值可更新）' : '请输入6位数字令牌'"
-                  maxlength="6"
-                />
-              </el-form-item>
-              <el-form-item>
-                <el-button type="primary" @click="saveToken" :loading="savingToken">保存令牌</el-button>
-                <el-button v-if="tokenConfigured" @click="clearToken" :loading="savingToken">关闭令牌验证</el-button>
-              </el-form-item>
-            </el-form>
+            <template v-if="!twoFAEnabled">
+              <template v-if="!setupQrCode">
+                <el-button type="primary" @click="setup2FA" :loading="setting2FA">启用两步验证</el-button>
+              </template>
+              <template v-else>
+                <div style="margin-bottom: 20px">
+                  <p style="margin-bottom: 10px">1. 使用验证器应用扫描下方二维码：</p>
+                  <div style="text-align: center; margin: 15px 0">
+                    <img :src="setupQrCode" alt="2FA QR Code" style="width: 200px; height: 200px" />
+                  </div>
+                  <p style="margin-bottom: 5px">2. 或手动输入密钥：</p>
+                  <el-input :model-value="setupSecret" readonly style="max-width: 400px; margin-bottom: 15px">
+                    <template #append>
+                      <el-button @click="copySecret">复制</el-button>
+                    </template>
+                  </el-input>
+                  <p style="margin-bottom: 10px">3. 输入验证器应用中显示的6位验证码完成绑定：</p>
+                  <el-form style="max-width: 400px" @submit.prevent="enable2FA">
+                    <el-form-item>
+                      <el-input v-model="verifyCode" placeholder="输入6位验证码" maxlength="6" />
+                    </el-form-item>
+                    <el-form-item>
+                      <el-button type="primary" @click="enable2FA" :loading="setting2FA">验证并启用</el-button>
+                      <el-button @click="cancelSetup">取消</el-button>
+                    </el-form-item>
+                  </el-form>
+                </div>
+              </template>
+            </template>
+            <template v-else>
+              <el-form style="max-width: 400px" @submit.prevent="disable2FA">
+                <el-form-item label="登录密码">
+                  <el-input v-model="disablePassword" type="password" show-password placeholder="输入登录密码以关闭两步验证" />
+                </el-form-item>
+                <el-form-item>
+                  <el-button type="danger" @click="disable2FA" :loading="setting2FA">关闭两步验证</el-button>
+                </el-form-item>
+              </el-form>
+            </template>
           </el-card>
 
           <el-card shadow="never">
@@ -244,7 +272,7 @@
               CF-CDN-Optimizer
             </el-descriptions-item>
             <el-descriptions-item label="版本">
-              v0.1.44
+              v0.1.45
             </el-descriptions-item>
             <el-descriptions-item label="描述">
               Cloudflare CDN 优选加速管理平台 - 自动化管理 Cloudflare 自定义主机名 + 阿里云 DNS 优选 IP
@@ -357,7 +385,6 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
 import api from '@/api'
-import { resetTokenCache } from '@/router'
 
 const activeTab = ref('api')
 const saving = ref(false)
@@ -366,12 +393,14 @@ const testingAliyun = ref(false)
 const showCfHelp = ref(false)
 const showAliyunHelp = ref(false)
 const savingHttps = ref(false)
-const savingToken = ref(false)
-const tokenConfigured = ref(false)
 
-const tokenForm = ref({
-  token: ''
-})
+// 2FA 相关
+const twoFAEnabled = ref(false)
+const setting2FA = ref(false)
+const setupQrCode = ref('')
+const setupSecret = ref('')
+const verifyCode = ref('')
+const disablePassword = ref('')
 
 // 跟踪敏感字段是否已配置（后端返回 ******）
 const cfConfigured = ref({
@@ -455,9 +484,6 @@ async function loadSettings() {
       httpsForm.value.keyPath = data.panel_key_path || ''
       httpsForm.value.certificateId = data.panel_cert_id ? parseInt(data.panel_cert_id) : null
       httpsForm.value.mode = data.panel_cert_id ? 'cert_id' : (data.panel_cert_path ? 'file_path' : 'cert_id')
-
-      // 令牌状态
-      tokenConfigured.value = data.panel_token === '******'
     }
   } catch (error) {
     console.error('加载设置失败:', error)
@@ -710,48 +736,73 @@ async function clearHttpsConfig() {
   }
 }
 
-async function saveToken() {
-  if (tokenForm.value.token && !/^\d{6}$/.test(tokenForm.value.token)) {
-    ElMessage.warning('令牌必须为6位数字')
-    return
-  }
-  if (!tokenForm.value.token && !tokenConfigured.value) {
-    ElMessage.warning('请输入6位数字令牌')
-    return
-  }
-
-  savingToken.value = true
+async function setup2FA() {
+  setting2FA.value = true
   try {
-    const settings = {}
-    if (tokenForm.value.token) {
-      settings.panel_token = tokenForm.value.token
+    const res = await api.post('/auth/2fa-setup')
+    if (res.data.success) {
+      setupQrCode.value = res.data.qrCode
+      setupSecret.value = res.data.secret
     }
-    await api.put('/settings/batch', { settings })
-    ElMessage.success('访问令牌已保存')
-    if (tokenForm.value.token) {
-      tokenConfigured.value = true
-      tokenForm.value.token = ''
-    }
-    resetTokenCache()
   } catch (error) {
-    ElMessage.error('保存失败: ' + (error.response?.data?.message || error.message))
+    ElMessage.error('生成密钥失败: ' + (error.response?.data?.message || error.message))
   } finally {
-    savingToken.value = false
+    setting2FA.value = false
   }
 }
 
-async function clearToken() {
-  savingToken.value = true
+function copySecret() {
+  navigator.clipboard.writeText(setupSecret.value)
+  ElMessage.success('密钥已复制')
+}
+
+function cancelSetup() {
+  setupQrCode.value = ''
+  setupSecret.value = ''
+  verifyCode.value = ''
+}
+
+async function enable2FA() {
+  if (!verifyCode.value || verifyCode.value.length !== 6) {
+    ElMessage.warning('请输入6位验证码')
+    return
+  }
+
+  setting2FA.value = true
   try {
-    await api.put('/settings', { key: 'panel_token', value: '' })
-    tokenConfigured.value = false
-    tokenForm.value.token = ''
-    ElMessage.success('已关闭令牌验证')
-    resetTokenCache()
+    const res = await api.post('/auth/2fa-enable', { code: verifyCode.value })
+    if (res.data.success) {
+      twoFAEnabled.value = true
+      setupQrCode.value = ''
+      setupSecret.value = ''
+      verifyCode.value = ''
+      ElMessage.success('两步验证已启用')
+    }
   } catch (error) {
-    ElMessage.error('操作失败: ' + (error.response?.data?.message || error.message))
+    ElMessage.error(error.response?.data?.message || '验证失败')
   } finally {
-    savingToken.value = false
+    setting2FA.value = false
+  }
+}
+
+async function disable2FA() {
+  if (!disablePassword.value) {
+    ElMessage.warning('请输入登录密码')
+    return
+  }
+
+  setting2FA.value = true
+  try {
+    const res = await api.post('/auth/2fa-disable', { password: disablePassword.value })
+    if (res.data.success) {
+      twoFAEnabled.value = false
+      disablePassword.value = ''
+      ElMessage.success('两步验证已关闭')
+    }
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '操作失败')
+  } finally {
+    setting2FA.value = false
   }
 }
 
@@ -781,9 +832,21 @@ async function changePassword() {
   }
 }
 
+async function load2FAStatus() {
+  try {
+    const res = await api.get('/auth/2fa-status')
+    if (res.data.success) {
+      twoFAEnabled.value = res.data.enabled
+    }
+  } catch (error) {
+    console.error('加载2FA状态失败:', error)
+  }
+}
+
 onMounted(() => {
   loadSettings()
   loadHttpsCerts()
+  load2FAStatus()
 })
 </script>
 
