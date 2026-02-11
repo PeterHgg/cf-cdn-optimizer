@@ -76,9 +76,15 @@ router.get('/:id', async (req, res) => {
     // 获取关联的 origin 规则
     const rules = await dbAll('SELECT * FROM origin_rules WHERE domain_config_id = ?', [req.params.id]);
 
+    // 获取关联的证书信息
+    let certificate = null;
+    if (domain.cert_mode === 'cert_id' && domain.certificate_id) {
+      certificate = await dbGet('SELECT id, domain, type, expires_at, created_at FROM certificates WHERE id = ?', [domain.certificate_id]);
+    }
+
     res.json({
       success: true,
-      data: { ...domain, originRules: rules }
+      data: { ...domain, originRules: rules, certificate }
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -88,7 +94,7 @@ router.get('/:id', async (req, res) => {
 // 创建新的域名配置
 router.post('/', async (req, res) => {
   try {
-    const { subdomain, rootDomain, fallbackSubdomain, fallbackRootDomain, optimizedIp, customPublicIp, overwrite } = req.body;
+    const { subdomain, rootDomain, fallbackSubdomain, fallbackRootDomain, optimizedIp, customPublicIp, overwrite, certMode, certificateId, certFilePath, keyFilePath } = req.body;
 
     if (!subdomain || !rootDomain || !fallbackSubdomain || !fallbackRootDomain) {
       return res.status(400).json({
@@ -233,17 +239,22 @@ router.post('/', async (req, res) => {
     const result = await dbRun(`
       INSERT INTO domain_configs
       (subdomain, root_domain, fallback_origin, cf_custom_hostname_id,
-       aliyun_record_id_china, aliyun_record_id_overseas, optimized_ip, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       aliyun_record_id_china, aliyun_record_id_overseas, optimized_ip, status,
+       cert_mode, certificate_id, cert_file_path, key_file_path)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       subdomain,
       rootDomain,
       fallbackOrigin,
       cfResult.customHostnameId,
-      aliyunResult.chinaRecordId, // 这里可能是一个逗号分隔的 ID 字符串
+      aliyunResult.chinaRecordId,
       aliyunResult.overseasRecordId,
       optimizedIpStr,
-      'pending'
+      'pending',
+      certMode || 'none',
+      certificateId || null,
+      certFilePath || null,
+      keyFilePath || null
     ]);
 
     // 7. 触发一次异步检查 (Fire and forget)
@@ -375,6 +386,44 @@ router.get('/:id/verify', async (req, res) => {
   try {
     const result = await monitor.checkDomain(req.params.id);
     res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 更新域名的证书绑定
+router.put('/:id/certificate', async (req, res) => {
+  try {
+    const { certMode, certificateId, certFilePath, keyFilePath } = req.body;
+    const domainId = req.params.id;
+
+    const domain = await dbGet('SELECT * FROM domain_configs WHERE id = ?', [domainId]);
+    if (!domain) {
+      return res.status(404).json({ success: false, message: '域名配置不存在' });
+    }
+
+    // 验证参数
+    if (certMode === 'cert_id' && !certificateId) {
+      return res.status(400).json({ success: false, message: '请选择一个证书' });
+    }
+    if (certMode === 'file_path' && (!certFilePath || !keyFilePath)) {
+      return res.status(400).json({ success: false, message: '请填写证书和私钥的文件路径' });
+    }
+
+    await dbRun(`
+      UPDATE domain_configs
+      SET cert_mode = ?, certificate_id = ?, cert_file_path = ?, key_file_path = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [
+      certMode || 'none',
+      certMode === 'cert_id' ? certificateId : null,
+      certMode === 'file_path' ? certFilePath : null,
+      certMode === 'file_path' ? keyFilePath : null,
+      domainId
+    ]);
+
+    res.json({ success: true, message: '证书配置已更新' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

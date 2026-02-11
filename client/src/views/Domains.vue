@@ -110,6 +110,36 @@
             />
           </el-select>
         </el-form-item>
+
+        <el-divider content-position="left">回源证书配置</el-divider>
+
+        <el-form-item label="证书来源">
+          <el-radio-group v-model="domainForm.certMode">
+            <el-radio-button value="none">无需配置</el-radio-button>
+            <el-radio-button value="cert_id">从证书库选择</el-radio-button>
+            <el-radio-button value="file_path">文件路径</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item v-if="domainForm.certMode === 'cert_id'" label="选择证书">
+          <el-select v-model="domainForm.certificateId" placeholder="选择已有证书" style="width: 100%">
+            <el-option
+              v-for="cert in certificates"
+              :key="cert.id"
+              :label="`${cert.domain} (${cert.type === 'origin' ? 'Origin CA' : '自定义'})`"
+              :value="cert.id"
+            />
+          </el-select>
+        </el-form-item>
+
+        <template v-if="domainForm.certMode === 'file_path'">
+          <el-form-item label="证书路径">
+            <el-input v-model="domainForm.certFilePath" placeholder="例如: /etc/ssl/cert.pem" />
+          </el-form-item>
+          <el-form-item label="私钥路径">
+            <el-input v-model="domainForm.keyFilePath" placeholder="例如: /etc/ssl/key.pem" />
+          </el-form-item>
+        </template>
       </el-form>
 
       <template #footer>
@@ -137,6 +167,60 @@
           {{ currentDomain.created_at }}
         </el-descriptions-item>
       </el-descriptions>
+
+      <!-- 回源证书配置 -->
+      <el-card shadow="never" style="margin-top: 20px">
+        <template #header>
+          <div class="card-header">
+            <span>回源证书配置</span>
+            <el-button type="primary" size="small" @click="saveCertBinding" :loading="savingCert">
+              保存证书配置
+            </el-button>
+          </div>
+        </template>
+
+        <el-form :model="certBindForm" label-width="100px">
+          <el-form-item label="证书来源">
+            <el-radio-group v-model="certBindForm.certMode">
+              <el-radio-button value="none">无需配置</el-radio-button>
+              <el-radio-button value="cert_id">从证书库选择</el-radio-button>
+              <el-radio-button value="file_path">文件路径</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item v-if="certBindForm.certMode === 'cert_id'" label="选择证书">
+            <el-select v-model="certBindForm.certificateId" placeholder="选择已有证书" style="width: 100%">
+              <el-option
+                v-for="cert in certificates"
+                :key="cert.id"
+                :label="`${cert.domain} (${cert.type === 'origin' ? 'Origin CA' : '自定义'})`"
+                :value="cert.id"
+              />
+            </el-select>
+          </el-form-item>
+
+          <template v-if="certBindForm.certMode === 'file_path'">
+            <el-form-item label="证书路径">
+              <el-input v-model="certBindForm.certFilePath" placeholder="例如: /etc/ssl/cert.pem" />
+            </el-form-item>
+            <el-form-item label="私钥路径">
+              <el-input v-model="certBindForm.keyFilePath" placeholder="例如: /etc/ssl/key.pem" />
+            </el-form-item>
+          </template>
+
+          <el-alert
+            v-if="currentDomain?.certificate"
+            type="success"
+            :closable="false"
+            style="margin-top: 10px"
+          >
+            <template #title>
+              当前绑定证书: {{ currentDomain.certificate.domain }} ({{ currentDomain.certificate.type === 'origin' ? 'Origin CA' : '自定义' }})
+              <span v-if="currentDomain.certificate.expires_at"> | 过期时间: {{ formatDate(currentDomain.certificate.expires_at) }}</span>
+            </template>
+          </el-alert>
+        </el-form>
+      </el-card>
 
       <div style="margin-top: 20px">
         <el-button type="primary" @click="showOriginRuleDialog = true">
@@ -188,9 +272,11 @@ const domains = ref([])
 const aliyunDomains = ref([])
 const cfZones = ref([])
 const optimizedIps = ref([])
+const certificates = ref([])
 const loading = ref(false)
 const submitting = ref(false)
 const deletingId = ref(null)
+const savingCert = ref(false)
 const showAddDialog = ref(false)
 const showDetailDialog = ref(false)
 const showOriginRuleDialog = ref(false)
@@ -203,7 +289,18 @@ const domainForm = ref({
   fallbackSubdomain: '',
   fallbackRootDomain: '',
   optimizedIp: [],
-  customPublicIp: ''
+  customPublicIp: '',
+  certMode: 'none',
+  certificateId: null,
+  certFilePath: '',
+  keyFilePath: ''
+})
+
+const certBindForm = ref({
+  certMode: 'none',
+  certificateId: null,
+  certFilePath: '',
+  keyFilePath: ''
 })
 
 const originRuleForm = ref({
@@ -253,6 +350,25 @@ async function loadOptimizedIps() {
   } catch (error) {
     console.error('加载优选 IP 失败:', error)
   }
+}
+
+async function loadCertificates() {
+  try {
+    const res = await api.get('/certificates')
+    if (res.data.success) {
+      certificates.value = res.data.data
+    }
+  } catch (error) {
+    console.error('加载证书列表失败:', error)
+  }
+}
+
+function formatDate(date) {
+  if (!date) return '-'
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return '-'
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 async function loadAliyunDomains() {
@@ -323,7 +439,11 @@ async function addDomain(overwrite = false) {
         fallbackSubdomain: '',
         fallbackRootDomain: '',
         optimizedIp: [],
-        customPublicIp: currentIp
+        customPublicIp: currentIp,
+        certMode: 'none',
+        certificateId: null,
+        certFilePath: '',
+        keyFilePath: ''
       }
       loadDomains()
 
@@ -372,10 +492,33 @@ async function viewDetails(domain) {
     const res = await api.get(`/domains/${domain.id}`)
     if (res.data.success) {
       currentDomain.value = res.data.data
+      // 填充证书绑定表单
+      certBindForm.value = {
+        certMode: res.data.data.cert_mode || 'none',
+        certificateId: res.data.data.certificate_id || null,
+        certFilePath: res.data.data.cert_file_path || '',
+        keyFilePath: res.data.data.key_file_path || ''
+      }
       showDetailDialog.value = true
     }
   } catch (error) {
     console.error('加载域名详情失败:', error)
+  }
+}
+
+async function saveCertBinding() {
+  savingCert.value = true
+  try {
+    const res = await api.put(`/domains/${currentDomain.value.id}/certificate`, certBindForm.value)
+    if (res.data.success) {
+      ElMessage.success('证书配置已保存')
+      // 刷新详情
+      viewDetails(currentDomain.value)
+    }
+  } catch (error) {
+    ElMessage.error('保存失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    savingCert.value = false
   }
 }
 
@@ -454,6 +597,7 @@ onMounted(() => {
   loadAliyunDomains()
   loadCfZones()
   fetchPublicIp()
+  loadCertificates()
 
   // Start polling
   pollTimer = setInterval(() => {

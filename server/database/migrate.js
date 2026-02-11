@@ -82,6 +82,27 @@ async function migrate() {
       )
     `);
 
+    // 为 domain_configs 表添加证书关联字段（兼容旧数据库）
+    const columns = await new Promise((resolve, reject) => {
+      db.all("PRAGMA table_info(domain_configs)", (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows.map(r => r.name));
+      });
+    });
+
+    if (!columns.includes('cert_mode')) {
+      await dbRun("ALTER TABLE domain_configs ADD COLUMN cert_mode TEXT DEFAULT 'none'");
+    }
+    if (!columns.includes('certificate_id')) {
+      await dbRun("ALTER TABLE domain_configs ADD COLUMN certificate_id INTEGER");
+    }
+    if (!columns.includes('cert_file_path')) {
+      await dbRun("ALTER TABLE domain_configs ADD COLUMN cert_file_path TEXT");
+    }
+    if (!columns.includes('key_file_path')) {
+      await dbRun("ALTER TABLE domain_configs ADD COLUMN key_file_path TEXT");
+    }
+
     // 插入默认优选 IP/域名
     const defaultIPs = [
       'www.visa.com',
