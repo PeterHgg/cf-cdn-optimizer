@@ -5,8 +5,18 @@ import api from '@/api'
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
   const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
+  const tokenVerified = ref(sessionStorage.getItem('tokenVerified') === 'true')
 
   const isAuthenticated = computed(() => !!token.value)
+
+  function setTokenVerified(val) {
+    tokenVerified.value = val
+    if (val) {
+      sessionStorage.setItem('tokenVerified', 'true')
+    } else {
+      sessionStorage.removeItem('tokenVerified')
+    }
+  }
 
   async function login(username, password) {
     const response = await api.post('/auth/login', { username, password })
@@ -34,6 +44,8 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     user,
     isAuthenticated,
+    tokenVerified,
+    setTokenVerified,
     login,
     logout
   }

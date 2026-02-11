@@ -5,6 +5,40 @@ const { dbGet, dbRun } = require('../database/db');
 
 const router = express.Router();
 
+// 查询令牌是否已启用（不需要认证）
+router.get('/token-status', async (req, res) => {
+  try {
+    const row = await dbGet("SELECT value FROM settings WHERE key = 'panel_token'");
+    res.json({ success: true, enabled: !!(row && row.value) });
+  } catch (error) {
+    res.json({ success: true, enabled: false });
+  }
+});
+
+// 验证6位数字令牌（不需要认证）
+router.post('/verify-token', async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, message: '请输入访问令牌' });
+    }
+
+    const row = await dbGet("SELECT value FROM settings WHERE key = 'panel_token'");
+    if (!row || !row.value) {
+      // 未设置令牌，直接通过
+      return res.json({ success: true });
+    }
+
+    if (token === row.value) {
+      return res.json({ success: true });
+    }
+
+    return res.status(401).json({ success: false, message: '访问令牌错误' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 登录
 router.post('/login', async (req, res) => {
   try {

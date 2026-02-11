@@ -138,7 +138,6 @@ initDatabase().then(() => {
   startServer();
 
   console.log(`🌍 环境: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`👤 默认账户: admin / admin123`);
 
   // 启动定时任务
   require('./tasks/ipUpdater');

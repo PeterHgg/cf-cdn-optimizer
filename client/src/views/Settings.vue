@@ -186,20 +186,56 @@
         </el-tab-pane>
 
         <el-tab-pane label="账户安全" name="security">
-          <el-form :model="passwordForm" label-width="120px" style="max-width: 500px">
-            <el-form-item label="原密码">
-              <el-input v-model="passwordForm.oldPassword" type="password" show-password />
-            </el-form-item>
-            <el-form-item label="新密码">
-              <el-input v-model="passwordForm.newPassword" type="password" show-password />
-            </el-form-item>
-            <el-form-item label="确认新密码">
-              <el-input v-model="passwordForm.confirmPassword" type="password" show-password />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="changePassword">修改密码</el-button>
-            </el-form-item>
-          </el-form>
+          <el-card shadow="never" style="margin-bottom: 20px">
+            <template #header>
+              <div class="card-header">
+                <span>访问令牌</span>
+              </div>
+            </template>
+
+            <el-alert type="info" :closable="false" style="margin-bottom: 20px">
+              <template #title>
+                设置6位数字访问令牌后，访问面板前需要先验证令牌，提升安全性。清空令牌即关闭此功能。
+              </template>
+            </el-alert>
+
+            <el-form :model="tokenForm" label-width="120px" style="max-width: 500px">
+              <el-form-item label="访问令牌">
+                <el-input
+                  v-model="tokenForm.token"
+                  :placeholder="tokenConfigured ? '已配置（留空不修改，输入新值可更新）' : '请输入6位数字令牌'"
+                  maxlength="6"
+                />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="saveToken" :loading="savingToken">保存令牌</el-button>
+                <el-button v-if="tokenConfigured" @click="clearToken" :loading="savingToken">关闭令牌验证</el-button>
+              </el-form-item>
+            </el-form>
+          </el-card>
+
+          <el-card shadow="never">
+            <template #header>
+              <div class="card-header">
+                <span>修改密码</span>
+              </div>
+            </template>
+
+            <el-form :model="passwordForm" label-width="120px" style="max-width: 500px">
+              <el-form-item label="原密码">
+                <el-input v-model="passwordForm.oldPassword" type="password" show-password />
+              </el-form-item>
+              <el-form-item label="新密码">
+                <el-input v-model="passwordForm.newPassword" type="password" show-password />
+              </el-form-item>
+              <el-form-item label="确认新密码">
+                <el-input v-model="passwordForm.confirmPassword" type="password" show-password />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="changePassword">修改密码</el-button>
+              </el-form-item>
+            </el-form>
+          </el-card>
         </el-tab-pane>
 
         <el-tab-pane label="关于" name="about">
@@ -208,7 +244,7 @@
               CF-CDN-Optimizer
             </el-descriptions-item>
             <el-descriptions-item label="版本">
-              v0.1.43
+              v0.1.44
             </el-descriptions-item>
             <el-descriptions-item label="描述">
               Cloudflare CDN 优选加速管理平台 - 自动化管理 Cloudflare 自定义主机名 + 阿里云 DNS 优选 IP
@@ -321,6 +357,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
 import api from '@/api'
+import { resetTokenCache } from '@/router'
 
 const activeTab = ref('api')
 const saving = ref(false)
@@ -329,6 +366,12 @@ const testingAliyun = ref(false)
 const showCfHelp = ref(false)
 const showAliyunHelp = ref(false)
 const savingHttps = ref(false)
+const savingToken = ref(false)
+const tokenConfigured = ref(false)
+
+const tokenForm = ref({
+  token: ''
+})
 
 // 跟踪敏感字段是否已配置（后端返回 ******）
 const cfConfigured = ref({
@@ -412,6 +455,9 @@ async function loadSettings() {
       httpsForm.value.keyPath = data.panel_key_path || ''
       httpsForm.value.certificateId = data.panel_cert_id ? parseInt(data.panel_cert_id) : null
       httpsForm.value.mode = data.panel_cert_id ? 'cert_id' : (data.panel_cert_path ? 'file_path' : 'cert_id')
+
+      // 令牌状态
+      tokenConfigured.value = data.panel_token === '******'
     }
   } catch (error) {
     console.error('加载设置失败:', error)
@@ -661,6 +707,51 @@ async function clearHttpsConfig() {
     ElMessage.error('操作失败: ' + (error.response?.data?.message || error.message))
   } finally {
     savingHttps.value = false
+  }
+}
+
+async function saveToken() {
+  if (tokenForm.value.token && !/^\d{6}$/.test(tokenForm.value.token)) {
+    ElMessage.warning('令牌必须为6位数字')
+    return
+  }
+  if (!tokenForm.value.token && !tokenConfigured.value) {
+    ElMessage.warning('请输入6位数字令牌')
+    return
+  }
+
+  savingToken.value = true
+  try {
+    const settings = {}
+    if (tokenForm.value.token) {
+      settings.panel_token = tokenForm.value.token
+    }
+    await api.put('/settings/batch', { settings })
+    ElMessage.success('访问令牌已保存')
+    if (tokenForm.value.token) {
+      tokenConfigured.value = true
+      tokenForm.value.token = ''
+    }
+    resetTokenCache()
+  } catch (error) {
+    ElMessage.error('保存失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    savingToken.value = false
+  }
+}
+
+async function clearToken() {
+  savingToken.value = true
+  try {
+    await api.put('/settings', { key: 'panel_token', value: '' })
+    tokenConfigured.value = false
+    tokenForm.value.token = ''
+    ElMessage.success('已关闭令牌验证')
+    resetTokenCache()
+  } catch (error) {
+    ElMessage.error('操作失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    savingToken.value = false
   }
 }
 

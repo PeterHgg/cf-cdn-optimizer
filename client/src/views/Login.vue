@@ -39,15 +39,6 @@
           </el-button>
         </el-form-item>
       </el-form>
-
-      <div class="login-tips">
-        <el-alert
-          title="默认账户: admin / admin123"
-          type="info"
-          :closable="false"
-          show-icon
-        />
-      </div>
     </el-card>
   </div>
 </template>
@@ -125,7 +116,4 @@ async function handleLogin() {
   color: #909399;
 }
 
-.login-tips {
-  margin-top: 20px;
-}
 </style>

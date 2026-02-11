@@ -12,7 +12,7 @@ async function getSettingValue(key) {
 }
 
 // 敏感字段列表 - 只返回是否已配置的标记，不返回实际值
-const SENSITIVE_KEYS = ['cf_api_key', 'cf_api_token', 'aliyun_access_key_secret'];
+const SENSITIVE_KEYS = ['cf_api_key', 'cf_api_token', 'aliyun_access_key_secret', 'panel_token'];
 
 // 获取所有设置
 router.get('/', async (req, res) => {
