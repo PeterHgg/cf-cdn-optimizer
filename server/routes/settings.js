@@ -11,13 +11,21 @@ async function getSettingValue(key) {
   return row ? row.value : null;
 }
 
+// 敏感字段列表 - 只返回是否已配置的标记，不返回实际值
+const SENSITIVE_KEYS = ['cf_api_key', 'cf_api_token', 'aliyun_access_key_secret'];
+
 // 获取所有设置
 router.get('/', async (req, res) => {
   try {
     const settings = await dbAll('SELECT * FROM settings');
     const settingsObj = {};
     settings.forEach(s => {
-      settingsObj[s.key] = s.value;
+      if (SENSITIVE_KEYS.includes(s.key)) {
+        // 敏感字段只返回是否已配置
+        settingsObj[s.key] = s.value ? '******' : '';
+      } else {
+        settingsObj[s.key] = s.value;
+      }
     });
     res.json({ success: true, data: settingsObj });
   } catch (error) {
