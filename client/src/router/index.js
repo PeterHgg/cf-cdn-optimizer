@@ -1,5 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import MainLayout from '@/layouts/MainLayout.vue'
+import Dashboard from '@/views/Dashboard.vue'
+import Domains from '@/views/Domains.vue'
+import OptimizedIps from '@/views/OptimizedIps.vue'
+import Certificates from '@/views/Certificates.vue'
+import Settings from '@/views/Settings.vue'
 
 const routes = [
   {
@@ -9,33 +15,33 @@ const routes = [
   },
   {
     path: '/',
-    component: () => import('@/layouts/MainLayout.vue'),
+    component: MainLayout,
     meta: { requiresAuth: true },
     children: [
       {
         path: '',
         name: 'Dashboard',
-        component: () => import('@/views/Dashboard.vue')
+        component: Dashboard
       },
       {
         path: 'domains',
         name: 'Domains',
-        component: () => import('@/views/Domains.vue')
+        component: Domains
       },
       {
         path: 'optimized-ips',
         name: 'OptimizedIps',
-        component: () => import('@/views/OptimizedIps.vue')
+        component: OptimizedIps
       },
       {
         path: 'certificates',
         name: 'Certificates',
-        component: () => import('@/views/Certificates.vue')
+        component: Certificates
       },
       {
         path: 'settings',
         name: 'Settings',
-        component: () => import('@/views/Settings.vue')
+        component: Settings
       }
     ]
   }
