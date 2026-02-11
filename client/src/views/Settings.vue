@@ -120,6 +120,50 @@
           </el-card>
         </el-tab-pane>
 
+        <el-tab-pane label="面板 HTTPS" name="https">
+          <el-card shadow="never">
+            <template #header>
+              <div class="card-header">
+                <span>面板 HTTPS 配置</span>
+              </div>
+            </template>
+
+            <el-alert type="info" :closable="false" style="margin-bottom: 20px">
+              <template #title>
+                配置后面板将以 HTTPS 方式监听当前端口，Cloudflare 回源时可完成 SSL 握手。保存后服务会自动重启。
+              </template>
+            </el-alert>
+
+            <el-form :model="httpsForm" label-width="120px" style="max-width: 600px">
+              <el-form-item label="证书文件路径">
+                <el-input v-model="httpsForm.certPath" placeholder="例如: /root/cert.pem" />
+              </el-form-item>
+              <el-form-item label="私钥文件路径">
+                <el-input v-model="httpsForm.keyPath" placeholder="例如: /root/key.pem" />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="saveHttpsConfig" :loading="savingHttps">
+                  保存并重启
+                </el-button>
+                <el-button @click="clearHttpsConfig" :loading="savingHttps">
+                  关闭 HTTPS (回退 HTTP)
+                </el-button>
+              </el-form-item>
+            </el-form>
+
+            <el-alert
+              v-if="httpsForm.certPath && httpsForm.keyPath"
+              type="success"
+              :closable="false"
+              style="margin-top: 10px"
+            >
+              <template #title>
+                当前已配置 HTTPS 证书: {{ httpsForm.certPath }}
+              </template>
+            </el-alert>
+          </el-card>
+        </el-tab-pane>
+
         <el-tab-pane label="账户安全" name="security">
           <el-form :model="passwordForm" label-width="120px" style="max-width: 500px">
             <el-form-item label="原密码">
@@ -143,7 +187,7 @@
               CF-CDN-Optimizer
             </el-descriptions-item>
             <el-descriptions-item label="版本">
-              v0.1.40
+              v0.1.41
             </el-descriptions-item>
             <el-descriptions-item label="描述">
               Cloudflare CDN 优选加速管理平台 - 自动化管理 Cloudflare 自定义主机名 + 阿里云 DNS 优选 IP
@@ -263,6 +307,12 @@ const testingCf = ref(false)
 const testingAliyun = ref(false)
 const showCfHelp = ref(false)
 const showAliyunHelp = ref(false)
+const savingHttps = ref(false)
+
+const httpsForm = ref({
+  certPath: '',
+  keyPath: ''
+})
 
 const cfForm = ref({
   email: '',
@@ -320,6 +370,9 @@ async function loadSettings() {
 
       aliyunForm.value.accessKeyId = data.aliyun_access_key_id || ''
       aliyunForm.value.accessKeySecret = data.aliyun_access_key_secret || ''
+
+      httpsForm.value.certPath = data.panel_cert_path || ''
+      httpsForm.value.keyPath = data.panel_key_path || ''
     }
   } catch (error) {
     console.error('加载设置失败:', error)
@@ -481,6 +534,41 @@ async function testAliyun() {
     ElMessage.error('阿里云连接失败: ' + (error.response?.data?.message || error.message))
   } finally {
     testingAliyun.value = false
+  }
+}
+
+async function saveHttpsConfig() {
+  if (!httpsForm.value.certPath || !httpsForm.value.keyPath) {
+    ElMessage.warning('请填写证书和私钥路径')
+    return
+  }
+
+  savingHttps.value = true
+  try {
+    const res = await api.put('/settings/panel-https', httpsForm.value)
+    if (res.data.success) {
+      ElMessage.success(res.data.message)
+    }
+  } catch (error) {
+    ElMessage.error('保存失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    savingHttps.value = false
+  }
+}
+
+async function clearHttpsConfig() {
+  savingHttps.value = true
+  try {
+    const res = await api.put('/settings/panel-https', { certPath: '', keyPath: '' })
+    if (res.data.success) {
+      httpsForm.value.certPath = ''
+      httpsForm.value.keyPath = ''
+      ElMessage.success('已关闭 HTTPS，服务正在重启为 HTTP 模式...')
+    }
+  } catch (error) {
+    ElMessage.error('操作失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    savingHttps.value = false
   }
 }
 

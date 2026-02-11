@@ -3,10 +3,15 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// 当前运行的服务器实例（用于重启）
+let currentServer = null;
 
 // 自动初始化数据库
 async function initDatabase() {
@@ -28,6 +33,71 @@ async function initDatabase() {
     console.log('✅ 数据库结构检查完成');
   } catch (error) {
     console.error('❌ 数据库初始化失败:', error.message);
+  }
+}
+
+/**
+ * 读取 HTTPS 证书配置（从数据库 settings 表）
+ * 返回 { certPath, keyPath } 或 null
+ */
+async function getHttpsConfig() {
+  try {
+    const { dbGet } = require('./database/db');
+    const certRow = await dbGet("SELECT value FROM settings WHERE key = 'panel_cert_path'");
+    const keyRow = await dbGet("SELECT value FROM settings WHERE key = 'panel_key_path'");
+
+    if (certRow && certRow.value && keyRow && keyRow.value) {
+      const certPath = certRow.value;
+      const keyPath = keyRow.value;
+
+      if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+        return { certPath, keyPath };
+      } else {
+        console.warn('⚠️ 面板 HTTPS 证书文件不存在，回退到 HTTP');
+        if (!fs.existsSync(certPath)) console.warn(`   证书文件不存在: ${certPath}`);
+        if (!fs.existsSync(keyPath)) console.warn(`   私钥文件不存在: ${keyPath}`);
+      }
+    }
+  } catch (e) {
+    // 数据库可能还没初始化，忽略
+  }
+  return null;
+}
+
+/**
+ * 启动或重启服务器（HTTP 或 HTTPS）
+ */
+async function startServer() {
+  // 如果已有服务器在运行，先关闭
+  if (currentServer) {
+    console.log('🔄 正在重启服务...');
+    await new Promise((resolve) => {
+      currentServer.close(() => resolve());
+    });
+    currentServer = null;
+  }
+
+  const httpsConfig = await getHttpsConfig();
+
+  if (httpsConfig) {
+    // HTTPS 模式
+    const sslOptions = {
+      cert: fs.readFileSync(httpsConfig.certPath),
+      key: fs.readFileSync(httpsConfig.keyPath)
+    };
+    currentServer = https.createServer(sslOptions, app);
+    currentServer.listen(PORT, () => {
+      console.log(`🚀 CF-CDN-Optimizer 服务已启动 (HTTPS)`);
+      console.log(`📡 服务地址: https://localhost:${PORT}`);
+      console.log(`🔒 证书: ${httpsConfig.certPath}`);
+    });
+  } else {
+    // HTTP 模式
+    currentServer = http.createServer(app);
+    currentServer.listen(PORT, () => {
+      console.log(`🚀 CF-CDN-Optimizer 服务已启动 (HTTP)`);
+      console.log(`📡 服务地址: http://localhost:${PORT}`);
+    });
   }
 }
 
@@ -65,12 +135,10 @@ initDatabase().then(() => {
   });
 
   // 启动服务器
-  app.listen(PORT, () => {
-    console.log(`🚀 CF-CDN-Optimizer 服务已启动`);
-    console.log(`📡 服务地址: http://localhost:${PORT}`);
-    console.log(`🌍 环境: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`👤 默认账户: admin / admin123`);
-  });
+  startServer();
+
+  console.log(`🌍 环境: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`👤 默认账户: admin / admin123`);
 
   // 启动定时任务
   require('./tasks/ipUpdater');
@@ -79,3 +147,6 @@ initDatabase().then(() => {
   console.error('❌ 服务启动失败:', error);
   process.exit(1);
 });
+
+// 导出重启函数供 settings 路由调用
+module.exports = { restartServer: startServer };

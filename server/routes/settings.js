@@ -73,6 +73,46 @@ router.put('/batch', async (req, res) => {
   }
 });
 
+// 保存面板 HTTPS 配置并重启服务
+router.put('/panel-https', async (req, res) => {
+  try {
+    const { certPath, keyPath } = req.body;
+    const fs = require('fs');
+
+    if (certPath && keyPath) {
+      // 验证文件是否存在
+      if (!fs.existsSync(certPath)) {
+        return res.status(400).json({ success: false, message: `证书文件不存在: ${certPath}` });
+      }
+      if (!fs.existsSync(keyPath)) {
+        return res.status(400).json({ success: false, message: `私钥文件不存在: ${keyPath}` });
+      }
+
+      await dbRun("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('panel_cert_path', ?, CURRENT_TIMESTAMP)", [certPath]);
+      await dbRun("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('panel_key_path', ?, CURRENT_TIMESTAMP)", [keyPath]);
+    } else {
+      // 清除 HTTPS 配置，回退到 HTTP
+      await dbRun("DELETE FROM settings WHERE key IN ('panel_cert_path', 'panel_key_path')");
+    }
+
+    // 先返回响应，然后延迟重启
+    res.json({ success: true, message: '面板 HTTPS 配置已保存，正在重启服务...' });
+
+    // 延迟 500ms 后重启，确保响应已发送
+    setTimeout(async () => {
+      try {
+        const { restartServer } = require('../index');
+        await restartServer();
+        console.log('✅ 面板服务已重启');
+      } catch (err) {
+        console.error('❌ 重启失败:', err.message);
+      }
+    }, 500);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 导出路由和获取设置值的函数
 module.exports = router;
 module.exports.getSettingValue = getSettingValue;
