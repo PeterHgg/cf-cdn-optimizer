@@ -20,6 +20,11 @@
         </el-table-column>
         <el-table-column prop="fallback_origin" label="回退源" min-width="180" />
         <el-table-column prop="optimized_ip" label="优选 IP" min-width="150" />
+        <el-table-column label="回源端口" width="100">
+          <template #default="{ row }">
+            {{ row.origin_port || 443 }}
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="120">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">
@@ -109,6 +114,11 @@
               :value="ip.ip_or_domain"
             />
           </el-select>
+        </el-form-item>
+
+        <el-form-item label="回源端口">
+          <el-input-number v-model="domainForm.originPort" :min="1" :max="65535" placeholder="默认 443" />
+          <div style="color: #909399; font-size: 12px; margin-top: 4px">如需回源到非 443 端口请填写，留空则默认 443</div>
         </el-form-item>
 
         <el-divider content-position="left">回源证书配置</el-divider>
@@ -222,43 +232,26 @@
         </el-form>
       </el-card>
 
-      <div style="margin-top: 20px">
-        <el-button type="primary" @click="showOriginRuleDialog = true">
-          <el-icon><Plus /></el-icon>
-          添加 Origin 规则
-        </el-button>
-      </div>
+      <!-- 回源端口配置 -->
+      <el-card shadow="never" style="margin-top: 20px">
+        <template #header>
+          <div class="card-header">
+            <span>回源端口配置</span>
+            <el-button type="primary" size="small" @click="saveOriginPort" :loading="savingPort">
+              保存端口配置
+            </el-button>
+          </div>
+        </template>
 
-      <el-table :data="currentDomain?.originRules || []" style="margin-top: 10px">
-        <el-table-column prop="match_pattern" label="匹配模式" />
-        <el-table-column prop="origin_host" label="源主机" />
-        <el-table-column prop="origin_port" label="端口" width="80" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button size="small" type="danger" @click="deleteOriginRule(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-dialog>
-
-    <!-- Origin 规则对话框 -->
-    <el-dialog v-model="showOriginRuleDialog" title="添加 Origin 规则" width="500px">
-      <el-form :model="originRuleForm" label-width="100px">
-        <el-form-item label="匹配模式">
-          <el-input v-model="originRuleForm.matchPattern" placeholder="例如: https://panel.*" />
-        </el-form-item>
-        <el-form-item label="源主机">
-          <el-input v-model="originRuleForm.originHost" placeholder="例如: 192.168.1.1" />
-        </el-form-item>
-        <el-form-item label="端口">
-          <el-input-number v-model="originRuleForm.originPort" :min="1" :max="65535" />
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="showOriginRuleDialog = false">取消</el-button>
-        <el-button type="primary" @click="addOriginRule">确定</el-button>
-      </template>
+        <el-form label-width="100px">
+          <el-form-item label="回源端口">
+            <el-input-number v-model="originPortForm" :min="1" :max="65535" placeholder="默认 443" />
+            <div style="color: #909399; font-size: 12px; margin-top: 4px">
+              当前端口: {{ currentDomain?.origin_port || 443 }}。修改后将自动同步 Cloudflare Origin Rules。
+            </div>
+          </el-form-item>
+        </el-form>
+      </el-card>
     </el-dialog>
   </div>
 </template>
@@ -277,10 +270,11 @@ const loading = ref(false)
 const submitting = ref(false)
 const deletingId = ref(null)
 const savingCert = ref(false)
+const savingPort = ref(false)
 const showAddDialog = ref(false)
 const showDetailDialog = ref(false)
-const showOriginRuleDialog = ref(false)
 const currentDomain = ref(null)
+const originPortForm = ref(443)
 let pollTimer = null
 
 const domainForm = ref({
@@ -290,6 +284,7 @@ const domainForm = ref({
   fallbackRootDomain: '',
   optimizedIp: [],
   customPublicIp: '',
+  originPort: null,
   certMode: 'none',
   certificateId: null,
   certFilePath: '',
@@ -301,12 +296,6 @@ const certBindForm = ref({
   certificateId: null,
   certFilePath: '',
   keyFilePath: ''
-})
-
-const originRuleForm = ref({
-  matchPattern: '',
-  originHost: '',
-  originPort: 443
 })
 
 function getStatusType(status) {
@@ -440,6 +429,7 @@ async function addDomain(overwrite = false) {
         fallbackRootDomain: '',
         optimizedIp: [],
         customPublicIp: currentIp,
+        originPort: null,
         certMode: 'none',
         certificateId: null,
         certFilePath: '',
@@ -499,6 +489,7 @@ async function viewDetails(domain) {
         certFilePath: res.data.data.cert_file_path || '',
         keyFilePath: res.data.data.key_file_path || ''
       }
+      originPortForm.value = res.data.data.origin_port || 443
       showDetailDialog.value = true
     }
   } catch (error) {
@@ -556,38 +547,21 @@ async function deleteDomain(domain) {
   }
 }
 
-async function addOriginRule() {
-  if (!originRuleForm.value.matchPattern || !originRuleForm.value.originHost) {
-    ElMessage.warning('请填写完整信息')
-    return
-  }
-
+async function saveOriginPort() {
+  savingPort.value = true
   try {
-    const res = await api.post(`/domains/${currentDomain.value.id}/origin-rules`, originRuleForm.value)
+    const res = await api.put(`/domains/${currentDomain.value.id}/origin-port`, {
+      originPort: originPortForm.value
+    })
     if (res.data.success) {
-      ElMessage.success('Origin 规则添加成功')
-      showOriginRuleDialog.value = false
-      originRuleForm.value = { matchPattern: '', originHost: '', originPort: 443 }
+      ElMessage.success(res.data.message)
       viewDetails(currentDomain.value)
+      loadDomains()
     }
   } catch (error) {
-    console.error('添加 Origin 规则失败:', error)
-  }
-}
-
-async function deleteOriginRule(rule) {
-  try {
-    await ElMessageBox.confirm('确定要删除此规则吗？', '提示', { type: 'warning' })
-
-    const res = await api.delete(`/domains/${currentDomain.value.id}/origin-rules/${rule.id}`)
-    if (res.data.success) {
-      ElMessage.success('删除成功')
-      viewDetails(currentDomain.value)
-    }
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('删除规则失败:', error)
-    }
+    ElMessage.error('保存失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    savingPort.value = false
   }
 }
 

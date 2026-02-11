@@ -189,43 +189,115 @@ async function listCustomHostnames() {
 }
 
 /**
- * 创建 Origin 规则
+ * 创建/更新 Origin Rules（使用 Rulesets API）
+ * 按端口分组，每个端口一条规则，匹配所有使用该端口的域名
  */
-async function createOriginRule(hostname, port) {
+async function syncOriginRules() {
   try {
-    const cf = await getClient();
+    const { dbAll } = require('../database/db');
+    const axios = require('axios');
     const zoneId = await getZoneId();
+    const cf = await getClient();
 
-    // 使用 Page Rules 或者 Workers 来实现端口转发
-    // 这里使用 DNS 记录 + Page Rule 的方式
-    const response = await cf.pagerules.create({
-      zone_id: zoneId,
-      targets: [{
-        target: 'url',
-        constraint: {
-          operator: 'matches',
-          value: `*${hostname}/*`
-        }
-      }],
-      actions: [{
-        id: 'forwarding_url',
-        value: {
-          url: `https://${hostname}:${port}/$1`,
-          status_code: 301
-        }
-      }],
-      status: 'active'
-    });
+    const authHeaders = cf.authType === 'key'
+      ? { 'X-Auth-Email': cf.email, 'X-Auth-Key': cf.apiKey }
+      : { 'Authorization': `Bearer ${cf.apiToken}` };
+    const headers = { 'Content-Type': 'application/json', ...authHeaders };
 
-    return {
-      success: true,
-      data: response
-    };
+    // 1. 获取所有需要端口转发的域名
+    const domains = await dbAll(
+      'SELECT subdomain, root_domain, fallback_origin, origin_port FROM domain_configs WHERE origin_port IS NOT NULL AND origin_port != 443'
+    );
+
+    // 2. 按端口分组
+    const portGroups = {};
+    for (const d of domains) {
+      const port = d.origin_port;
+      if (!portGroups[port]) portGroups[port] = [];
+      const fullDomain = `${d.subdomain}.${d.root_domain}`;
+      portGroups[port].push(fullDomain);
+      // 同时匹配回退源
+      if (d.fallback_origin) {
+        portGroups[port].push(d.fallback_origin);
+      }
+    }
+
+    // 3. 获取当前 zone 的 origin rules ruleset
+    let rulesetId = null;
+    let existingRules = [];
+    try {
+      const rsResp = await axios.get(
+        `https://api.cloudflare.com/client/v4/zones/${zoneId}/rulesets/phases/http_request_origin/entrypoint`,
+        { headers }
+      );
+      if (rsResp.data.success && rsResp.data.result) {
+        rulesetId = rsResp.data.result.id;
+        existingRules = rsResp.data.result.rules || [];
+      }
+    } catch (e) {
+      // 404 表示还没有 origin rules ruleset，后面创建时会自动生成
+      if (e.response?.status !== 404) {
+        throw e;
+      }
+    }
+
+    // 4. 保留非本系统管理的规则（不以 [CDN优选] 开头的）
+    const manualRules = existingRules.filter(r => !r.description?.startsWith('[CDN优选]'));
+
+    // 5. 构建本系统管理的规则
+    const autoRules = [];
+    for (const [port, hostnames] of Object.entries(portGroups)) {
+      // 去重
+      const unique = [...new Set(hostnames)];
+      // 构建 expression: (http.request.full_uri wildcard r"https://host1/*") or (http.request.full_uri wildcard r"https://host2/*")
+      const conditions = unique.map(h =>
+        `(http.request.full_uri wildcard r"https://${h}/*")`
+      );
+      const expression = conditions.join(' or ');
+
+      autoRules.push({
+        action: 'route',
+        action_parameters: {
+          origin: {
+            port: parseInt(port)
+          }
+        },
+        expression: expression,
+        description: `[CDN优选] 回源${port}`,
+        enabled: true
+      });
+    }
+
+    // 6. 合并规则（手动规则在前，自动规则在后）
+    const allRules = [...manualRules, ...autoRules];
+
+    // 7. 更新或创建 ruleset
+    if (rulesetId) {
+      // 更新现有 ruleset
+      await axios.put(
+        `https://api.cloudflare.com/client/v4/zones/${zoneId}/rulesets/${rulesetId}`,
+        { rules: allRules },
+        { headers }
+      );
+    } else if (autoRules.length > 0) {
+      // 创建新的 ruleset
+      await axios.post(
+        `https://api.cloudflare.com/client/v4/zones/${zoneId}/rulesets`,
+        {
+          name: 'default',
+          kind: 'zone',
+          phase: 'http_request_origin',
+          rules: allRules
+        },
+        { headers }
+      );
+    }
+
+    console.log(`Origin Rules 同步完成: ${autoRules.length} 条自动规则`);
+    return { success: true, rulesCount: autoRules.length };
   } catch (error) {
-    return {
-      success: false,
-      message: error.message
-    };
+    console.error('同步 Origin Rules 失败:', error.response?.data || error.message);
+    return { success: false, message: error.response?.data?.errors?.[0]?.message || error.message };
   }
 }
 
@@ -415,7 +487,7 @@ module.exports = {
   getCustomHostnameStatus,
   deleteCustomHostname,
   listCustomHostnames,
-  createOriginRule,
+  syncOriginRules,
   refreshClient,
   listZones,
   addDnsRecord,

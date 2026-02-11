@@ -94,7 +94,7 @@ router.get('/:id', async (req, res) => {
 // 创建新的域名配置
 router.post('/', async (req, res) => {
   try {
-    const { subdomain, rootDomain, fallbackSubdomain, fallbackRootDomain, optimizedIp, customPublicIp, overwrite, certMode, certificateId, certFilePath, keyFilePath } = req.body;
+    const { subdomain, rootDomain, fallbackSubdomain, fallbackRootDomain, optimizedIp, customPublicIp, overwrite, certMode, certificateId, certFilePath, keyFilePath, originPort } = req.body;
 
     if (!subdomain || !rootDomain || !fallbackSubdomain || !fallbackRootDomain) {
       return res.status(400).json({
@@ -240,8 +240,8 @@ router.post('/', async (req, res) => {
       INSERT INTO domain_configs
       (subdomain, root_domain, fallback_origin, cf_custom_hostname_id,
        aliyun_record_id_china, aliyun_record_id_overseas, optimized_ip, status,
-       cert_mode, certificate_id, cert_file_path, key_file_path)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       cert_mode, certificate_id, cert_file_path, key_file_path, origin_port)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       subdomain,
       rootDomain,
@@ -254,10 +254,18 @@ router.post('/', async (req, res) => {
       certMode || 'none',
       certificateId || null,
       certFilePath || null,
-      keyFilePath || null
+      keyFilePath || null,
+      originPort || null
     ]);
 
-    // 7. 触发一次异步检查 (Fire and forget)
+    // 7. 如果配置了 origin_port，同步 Cloudflare Origin Rules
+    if (originPort && originPort !== 443) {
+      cfService.syncOriginRules().catch(err => {
+        console.error('同步 Origin Rules 失败:', err);
+      });
+    }
+
+    // 8. 触发一次异步检查 (Fire and forget)
     monitor.checkDomain(result.lastID).catch(err => {
         console.error('Initial domain check failed:', err);
     });
@@ -333,6 +341,13 @@ router.delete('/:id', async (req, res) => {
     // 从数据库删除
     await dbRun('DELETE FROM domain_configs WHERE id = ?', [req.params.id]);
     await dbRun('DELETE FROM origin_rules WHERE domain_config_id = ?', [req.params.id]);
+
+    // 同步 Origin Rules（删除域名后需要更新规则）
+    if (domain.origin_port && domain.origin_port !== 443) {
+      cfService.syncOriginRules().catch(err => {
+        console.error('同步 Origin Rules 失败:', err);
+      });
+    }
 
     res.json({ success: true, message: '域名配置已删除' });
   } catch (error) {
@@ -424,6 +439,34 @@ router.put('/:id/certificate', async (req, res) => {
     ]);
 
     res.json({ success: true, message: '证书配置已更新' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 更新域名的回源端口
+router.put('/:id/origin-port', async (req, res) => {
+  try {
+    const { originPort } = req.body;
+    const domainId = req.params.id;
+
+    const domain = await dbGet('SELECT * FROM domain_configs WHERE id = ?', [domainId]);
+    if (!domain) {
+      return res.status(404).json({ success: false, message: '域名配置不存在' });
+    }
+
+    await dbRun(`
+      UPDATE domain_configs SET origin_port = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `, [originPort || null, domainId]);
+
+    // 同步 Cloudflare Origin Rules
+    const syncResult = await cfService.syncOriginRules();
+    if (!syncResult.success) {
+      res.json({ success: true, message: '端口已保存，但同步 Cloudflare 规则失败: ' + syncResult.message });
+      return;
+    }
+
+    res.json({ success: true, message: '回源端口配置已更新并同步到 Cloudflare' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

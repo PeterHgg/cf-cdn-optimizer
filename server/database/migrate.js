@@ -102,6 +102,9 @@ async function migrate() {
     if (!columns.includes('key_file_path')) {
       await dbRun("ALTER TABLE domain_configs ADD COLUMN key_file_path TEXT");
     }
+    if (!columns.includes('origin_port')) {
+      await dbRun("ALTER TABLE domain_configs ADD COLUMN origin_port INTEGER");
+    }
 
     // 插入默认优选 IP/域名
     const defaultIPs = [
