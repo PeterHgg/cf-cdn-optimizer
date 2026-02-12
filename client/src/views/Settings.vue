@@ -272,7 +272,7 @@
               CF-CDN-Optimizer
             </el-descriptions-item>
             <el-descriptions-item label="版本">
-              v0.1.45
+              v0.1.46
             </el-descriptions-item>
             <el-descriptions-item label="描述">
               Cloudflare CDN 优选加速管理平台 - 自动化管理 Cloudflare 自定义主机名 + 阿里云 DNS 优选 IP
