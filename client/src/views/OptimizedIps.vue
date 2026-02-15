@@ -12,36 +12,39 @@
       </template>
 
       <el-table :data="ips" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column prop="ip_or_domain" label="IP/域名" min-width="180" />
-        <el-table-column label="类型" width="100">
+        <el-table-column prop="id" label="ID" width="50" v-if="!isMobile" />
+        <el-table-column prop="ip_or_domain" label="IP/域名" min-width="140" show-overflow-tooltip />
+        <el-table-column label="类型" width="90">
           <template #default="{ row }">
-            <el-tag :type="row.type === 'ip' ? 'primary' : 'success'">
-              {{ row.type === 'ip' ? 'IP 地址' : '域名' }}
+            <el-tag :type="row.type === 'ip' ? 'primary' : 'success'" size="small">
+              {{ row.type === 'ip' ? 'IP' : '域名' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="region" label="区域" width="120" />
-        <el-table-column label="延迟" width="120">
+        <el-table-column label="区域" width="100" v-if="!isMobile" />
+        <el-table-column label="延迟" width="100" v-if="!isMobile">
           <template #default="{ row }">
             <span v-if="row.latency">{{ row.latency.toFixed(0) }} ms</span>
-            <span v-else style="color: #909399">未测试</span>
+            <span v-else style="color: #909399">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="80">
           <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'info'">
+            <el-tag :type="row.is_active ? 'success' : 'info'" size="small">
               {{ row.is_active ? '启用' : '禁用' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="last_check" label="最后检测" width="180" />
-        <el-table-column label="操作" width="180" :fixed="isMobile ? false : 'right'">
+        <el-table-column label="操作" :width="isMobile ? 110 : 180" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
-            <el-button size="small" @click="toggleStatus(row)">
-              {{ row.is_active ? '禁用' : '启用' }}
+            <el-button size="small" @click="toggleStatus(row)" :icon="isMobile ? '' : ''">
+              {{ isMobile ? '' : (row.is_active ? '禁用' : '启用') }}
+              <el-icon v-if="isMobile"><Operation /></el-icon>
             </el-button>
-            <el-button size="small" type="danger" @click="deleteIp(row)">删除</el-button>
+            <el-button size="small" type="danger" @click="deleteIp(row)" :icon="isMobile ? '' : ''">
+              {{ isMobile ? '' : '删除' }}
+              <el-icon v-if="isMobile"><Delete /></el-icon>
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -78,6 +81,7 @@
 <script setup>
 import { ref, onMounted, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Operation, Delete } from '@element-plus/icons-vue'
 import api from '@/api'
 
 const isMobile = inject('isMobile')
@@ -165,5 +169,19 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+@media (max-width: 768px) {
+  :deep(.el-table) {
+    font-size: 13px;
+  }
+
+  :deep(.el-button) {
+    padding: 5px 8px;
+  }
+
+  :deep(.el-tag) {
+    font-size: 11px;
+  }
 }
 </style>

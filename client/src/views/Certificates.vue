@@ -12,31 +12,32 @@
       </template>
 
       <el-table :data="certs" border style="width: 100%" v-loading="loading">
-        <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column prop="domain" label="域名" min-width="150" />
-        <el-table-column prop="type" label="类型" width="100">
+        <el-table-column prop="id" label="ID" width="50" v-if="!isMobile" />
+        <el-table-column prop="domain" label="域名" min-width="130" show-overflow-tooltip />
+        <el-table-column label="类型" width="85">
           <template #default="scope">
-            <el-tag :type="scope.row.type === 'origin' ? 'primary' : 'success'">
-              {{ scope.row.type === 'origin' ? 'Origin CA' : 'Custom' }}
+            <el-tag :type="scope.row.type === 'origin' ? 'primary' : 'success'" size="small">
+              {{ scope.row.type === 'origin' ? 'Origin' : 'Custom' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="expires_at" label="过期时间" min-width="160">
+        <el-table-column label="过期时间" min-width="140">
           <template #default="scope">
             {{ formatDate(scope.row.expires_at) }}
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" min-width="160" v-if="!isMobile">
+        <el-table-column label="操作" :width="isMobile ? 120 : 200" :fixed="isMobile ? false : 'right'">
           <template #default="scope">
-            {{ formatDate(scope.row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" :width="isMobile ? 180 : 250" :fixed="isMobile ? false : 'right'">
-          <template #default="scope">
-            <el-button size="small" @click="viewCert(scope.row)">查看</el-button>
+            <el-button size="small" @click="viewCert(scope.row)" :icon="isMobile ? '' : ''">
+              {{ isMobile ? '' : '查看' }}
+              <el-icon v-if="isMobile"><View /></el-icon>
+            </el-button>
             <el-popconfirm title="确定要删除该证书吗？" @confirm="deleteCert(scope.row.id)">
               <template #reference>
-                <el-button size="small" type="danger">删除</el-button>
+                <el-button size="small" type="danger" :icon="isMobile ? '' : ''">
+                  {{ isMobile ? '' : '删除' }}
+                  <el-icon v-if="isMobile"><Delete /></el-icon>
+                </el-button>
               </template>
             </el-popconfirm>
           </template>
@@ -126,6 +127,7 @@
 <script setup>
 import { ref, onMounted, inject } from 'vue'
 import { ElMessage } from 'element-plus'
+import { View, Delete } from '@element-plus/icons-vue'
 import api from '@/api'
 
 const isMobile = inject('isMobile')
@@ -251,5 +253,29 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .actions {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  :deep(.el-table) {
+    font-size: 13px;
+  }
+
+  :deep(.el-button) {
+    padding: 5px 8px;
+  }
+
+  :deep(.el-tag) {
+    font-size: 11px;
+  }
 }
 </style>

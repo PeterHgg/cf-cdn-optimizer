@@ -12,37 +12,50 @@
       </template>
 
       <el-table :data="domains" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column label="完整域名" min-width="200">
+        <el-table-column prop="id" label="ID" width="50" v-if="!isMobile" />
+        <el-table-column label="完整域名" min-width="150">
           <template #default="{ row }">
-            {{ row.subdomain }}.{{ row.root_domain }}
+            <div style="font-weight: 500">{{ row.subdomain }}.{{ row.root_domain }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="fallback_origin" label="回退源" min-width="180" />
-        <el-table-column prop="optimized_ip" label="优选 IP" min-width="150" />
-        <el-table-column label="回源端口" width="100">
+        <el-table-column label="回退源" min-width="140" v-if="!isMobile">
+          <template #default="{ row }">
+            {{ row.fallback_origin }}
+          </template>
+        </el-table-column>
+        <el-table-column label="优选 IP" min-width="120" v-if="!isMobile">
+          <template #default="{ row }">
+            {{ row.optimized_ip || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="端口" width="70">
           <template #default="{ row }">
             {{ row.origin_port || 443 }}
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="120">
+        <el-table-column label="状态" width="80">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">
+            <el-tag :type="getStatusType(row.status)" size="small">
               {{ getStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" :width="isMobile ? 120 : 200" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
-            <el-button size="small" @click="viewDetails(row)">详情</el-button>
+            <el-button size="small" @click="viewDetails(row)" :icon="isMobile ? '' : ''">
+              {{ isMobile ? '' : '详情' }}
+              <el-icon v-if="isMobile"><View /></el-icon>
+            </el-button>
             <el-button
               size="small"
               type="danger"
               @click="deleteDomain(row)"
               :loading="deletingId === row.id"
               :disabled="deletingId !== null && deletingId !== row.id"
+              :icon="isMobile ? '' : ''"
             >
-              删除
+              {{ isMobile ? '' : '删除' }}
+              <el-icon v-if="isMobile"><Delete /></el-icon>
             </el-button>
           </template>
         </el-table-column>
@@ -259,6 +272,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { View, Delete } from '@element-plus/icons-vue'
 import api from '@/api'
 
 const isMobile = inject('isMobile')
@@ -591,5 +605,20 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+@media (max-width: 768px) {
+  /* Optimize table on mobile */
+  :deep(.el-table) {
+    font-size: 13px;
+  }
+
+  :deep(.el-button) {
+    padding: 5px 8px;
+  }
+
+  :deep(.el-tag) {
+    font-size: 11px;
+  }
 }
 </style>
