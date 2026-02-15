@@ -36,7 +36,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="last_check" label="最后检测" width="180" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="180" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
             <el-button size="small" @click="toggleStatus(row)">
               {{ row.is_active ? '禁用' : '启用' }}
@@ -48,8 +48,8 @@
     </el-card>
 
     <!-- 添加优选 IP 对话框 -->
-    <el-dialog v-model="showAddDialog" title="添加优选域名/IP" width="500px">
-      <el-form :model="ipForm" label-width="100px">
+    <el-dialog v-model="showAddDialog" title="添加优选域名/IP" :width="isMobile ? '95%' : '500px'">
+      <el-form :model="ipForm" :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
         <el-form-item label="类型">
           <el-radio-group v-model="ipForm.type">
             <el-radio label="ip">IP 地址</el-radio>
@@ -76,9 +76,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
+
+const isMobile = inject('isMobile')
 
 const ips = ref([])
 const loading = ref(false)

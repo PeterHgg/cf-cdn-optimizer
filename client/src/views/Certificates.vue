@@ -3,17 +3,17 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>SSL 证书管理 (Origin CA)</span>
-          <div>
-            <el-button type="primary" @click="showGenerate = true">生成 Origin 证书</el-button>
-            <el-button type="success" @click="showImport = true">导入证书</el-button>
+          <span>SSL 证书管理</span>
+          <div class="actions">
+            <el-button type="primary" size="small" @click="showGenerate = true">生成 Origin 证书</el-button>
+            <el-button type="success" size="small" @click="showImport = true">导入证书</el-button>
           </div>
         </div>
       </template>
 
       <el-table :data="certs" border style="width: 100%" v-loading="loading">
         <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column prop="domain" label="域名" />
+        <el-table-column prop="domain" label="域名" min-width="150" />
         <el-table-column prop="type" label="类型" width="100">
           <template #default="scope">
             <el-tag :type="scope.row.type === 'origin' ? 'primary' : 'success'">
@@ -21,19 +21,19 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="expires_at" label="过期时间">
+        <el-table-column prop="expires_at" label="过期时间" min-width="160">
           <template #default="scope">
             {{ formatDate(scope.row.expires_at) }}
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="创建时间">
+        <el-table-column prop="created_at" label="创建时间" min-width="160" v-if="!isMobile">
           <template #default="scope">
             {{ formatDate(scope.row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="250">
+        <el-table-column label="操作" :width="isMobile ? 180 : 250" :fixed="isMobile ? false : 'right'">
           <template #default="scope">
-            <el-button size="small" @click="viewCert(scope.row)">查看/复制</el-button>
+            <el-button size="small" @click="viewCert(scope.row)">查看</el-button>
             <el-popconfirm title="确定要删除该证书吗？" @confirm="deleteCert(scope.row.id)">
               <template #reference>
                 <el-button size="small" type="danger">删除</el-button>
@@ -45,8 +45,8 @@
     </el-card>
 
     <!-- 生成证书弹窗 -->
-    <el-dialog v-model="showGenerate" title="生成 Cloudflare Origin CA 证书" width="500px">
-      <el-form :model="genForm" label-width="100px">
+    <el-dialog v-model="showGenerate" title="生成 Cloudflare Origin CA 证书" :width="isMobile ? '95%' : '500px'">
+      <el-form :model="genForm" :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
         <el-form-item label="域名列表" required>
           <el-input
             v-model="genForm.domains"
@@ -68,8 +68,8 @@
     </el-dialog>
 
     <!-- 导入证书弹窗 -->
-    <el-dialog v-model="showImport" title="导入证书" width="600px">
-      <el-form :model="importForm" label-width="100px">
+    <el-dialog v-model="showImport" title="导入证书" :width="isMobile ? '95%' : '600px'">
+      <el-form :model="importForm" :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
         <el-form-item label="标识域名" required>
           <el-input v-model="importForm.domain" placeholder="仅用于标记，如 example.com" />
         </el-form-item>
@@ -99,7 +99,7 @@
     </el-dialog>
 
     <!-- 查看证书详情 -->
-    <el-dialog v-model="showDetail" title="证书详情" width="700px">
+    <el-dialog v-model="showDetail" title="证书详情" :width="isMobile ? '95%' : '700px'">
       <div v-if="currentCert">
         <h3>Certificate (Public Key)</h3>
         <el-input
@@ -124,9 +124,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
+
+const isMobile = inject('isMobile')
 
 const certs = ref([])
 const loading = ref(false)

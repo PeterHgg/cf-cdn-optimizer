@@ -19,7 +19,7 @@
               </div>
             </template>
 
-            <el-form :model="cfForm" label-width="180px">
+            <el-form :model="cfForm" :label-width="isMobile ? 'auto' : '180px'" :label-position="isMobile ? 'top' : 'right'">
               <!-- API Token (已废弃，保留兼容) -->
               <!-- 改为 Email + Global API Key -->
 
@@ -31,7 +31,7 @@
               </el-form-item>
 
               <el-form-item label="Global API Key" required>
-                <div style="display: flex; gap: 10px; width: 100%">
+                <div :style="{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', width: '100%' }">
                   <el-input
                     v-model="cfForm.apiKey"
                     type="password"
@@ -95,7 +95,7 @@
               </div>
             </template>
 
-            <el-form :model="aliyunForm" label-width="180px">
+            <el-form :model="aliyunForm" :label-width="isMobile ? 'auto' : '180px'" :label-position="isMobile ? 'top' : 'right'">
               <el-form-item label="Access Key ID" required>
                 <el-input
                   v-model="aliyunForm.accessKeyId"
@@ -134,7 +134,7 @@
               </template>
             </el-alert>
 
-            <el-form :model="httpsForm" label-width="120px" style="max-width: 600px">
+            <el-form :model="httpsForm" :label-width="isMobile ? 'auto' : '120px'" :label-position="isMobile ? 'top' : 'right'" style="max-width: 600px">
               <el-form-item label="证书来源">
                 <el-radio-group v-model="httpsForm.mode">
                   <el-radio-button value="cert_id">从证书库选择</el-radio-button>
@@ -249,7 +249,7 @@
               </div>
             </template>
 
-            <el-form :model="passwordForm" label-width="120px" style="max-width: 500px">
+            <el-form :model="passwordForm" :label-width="isMobile ? 'auto' : '120px'" :label-position="isMobile ? 'top' : 'right'" style="max-width: 500px">
               <el-form-item label="原密码">
                 <el-input v-model="passwordForm.oldPassword" type="password" show-password />
               </el-form-item>
@@ -289,7 +289,7 @@
     </el-card>
 
     <!-- Cloudflare 帮助弹窗 -->
-    <el-dialog v-model="showCfHelp" title="如何获取 Cloudflare API 配置" width="700px">
+    <el-dialog v-model="showCfHelp" title="如何获取 Cloudflare API 配置" :width="isMobile ? '95%' : '700px'">
       <el-alert type="info" :closable="false" style="margin-bottom: 15px">
         <template #title>
           <strong>本系统需要 Cloudflare for SaaS（自定义主机名）功能，请确保您的账户已开通此功能。</strong>
@@ -333,7 +333,7 @@
     </el-dialog>
 
     <!-- 阿里云帮助弹窗 -->
-    <el-dialog v-model="showAliyunHelp" title="如何获取阿里云 DNS API 配置" width="700px">
+    <el-dialog v-model="showAliyunHelp" title="如何获取阿里云 DNS API 配置" :width="isMobile ? '95%' : '700px'">
       <el-alert type="info" :closable="false" style="margin-bottom: 15px">
         <template #title>
           <strong>建议创建子账号并仅授予 DNS 管理权限，避免使用主账号 AK。</strong>
@@ -381,10 +381,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import { ElMessage } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
 import api from '@/api'
+
+const isMobile = inject('isMobile')
 
 const activeTab = ref('api')
 const saving = ref(false)
@@ -439,15 +441,6 @@ const passwordForm = ref({
   newPassword: '',
   confirmPassword: ''
 })
-
-// Cloudflare 权限表格数据
-const cfPermissions = [
-  { resource: 'Zone - SSL and Certificates', permission: 'Edit', desc: '管理自定义主机名 SSL 证书' },
-  { resource: 'Zone - Cloudflare for SaaS', permission: 'Edit', desc: '创建和管理自定义主机名' },
-  { resource: 'Zone - DNS', permission: 'Edit', desc: '管理 DNS 记录' },
-  { resource: 'Zone - Zone Settings', permission: 'Read', desc: '读取 Zone 配置' },
-  { resource: 'Account - Cloudflare for SaaS', permission: 'Edit', desc: '账户级别 SaaS 配置' }
-]
 
 // 阿里云权限表格数据
 const aliyunPermissions = [
@@ -517,13 +510,6 @@ async function loadZones() {
     }
 
     // 调用后端获取 Zone 列表
-    // 复用已有的 cloudflare services
-    // 我们需要一个路由来暴露 listZones，假设后端没有直接暴露，我们需要添加或使用已有
-    // 查看 server/services/cloudflare.js 导出了 listZones
-    // 查看 server/routes/cloudflare.js 是否有对应的路由？
-    // 假设没有，我们需要确保 routes/cloudflare.js 有 list-zones
-
-    // 这里尝试直接调用一个我们稍后确认存在的接口
     const res = await api.get('/cloudflare/zones')
     if (res.data.success) {
       zoneOptions.value = res.data.data.map(z => ({
@@ -567,7 +553,6 @@ function handleZoneChange(val) {
   const zone = zoneOptions.value.find(z => z.id === val)
   if (zone && zone.account && zone.account.id) {
     cfForm.value.accountId = zone.account.id
-    // ElMessage.success('已自动切换 Account ID')
   }
 }
 
@@ -626,10 +611,9 @@ async function saveAliyunSettings() {
   saving.value = true
   try {
     const settings = {
-      aliyun_access_key_id: aliyunForm.value.accessKeyId
+      aliyun_access_key_id: aliyunForm.value.accessKeyId,
+      ...(aliyunForm.value.accessKeySecret ? { aliyun_access_key_secret: aliyunForm.value.accessKeySecret } : {})
     }
-    // 敏感字段：只在用户填写了新值时才发送
-    if (aliyunForm.value.accessKeySecret) settings.aliyun_access_key_secret = aliyunForm.value.accessKeySecret
 
     await api.put('/settings/batch', { settings })
     ElMessage.success('阿里云配置已保存')
@@ -868,6 +852,12 @@ onMounted(() => {
 ol {
   padding-left: 20px;
   line-height: 2;
+}
+
+@media (max-width: 768px) {
+  ol {
+    padding-left: 15px;
+  }
 }
 
 a {

@@ -50,17 +50,17 @@
     </el-card>
 
     <!-- 添加域名对话框 -->
-    <el-dialog v-model="showAddDialog" title="添加域名配置" width="600px">
-      <el-form :model="domainForm" label-width="120px">
+    <el-dialog v-model="showAddDialog" title="添加域名配置" :width="isMobile ? '95%' : '600px'">
+      <el-form :model="domainForm" :label-width="isMobile ? 'auto' : '120px'" :label-position="isMobile ? 'top' : 'right'">
         <el-form-item label="阿里云域名" required>
-          <el-row :gutter="10" style="width: 100%">
-            <el-col :span="10">
+          <el-row :gutter="isMobile ? 0 : 10" style="width: 100%">
+            <el-col :span="isMobile ? 24 : 10">
               <el-input v-model="domainForm.subdomain" placeholder="子域名 (如: cdn)" />
             </el-col>
-            <el-col :span="2" style="text-align: center; line-height: 32px">
+            <el-col v-if="!isMobile" :span="2" style="text-align: center; line-height: 32px">
               .
             </el-col>
-            <el-col :span="12">
+            <el-col :span="isMobile ? 24 : 12" :style="{ marginTop: isMobile ? '10px' : '0' }">
               <el-select v-model="domainForm.rootDomain" placeholder="选择根域名" filterable style="width: 100%">
                 <el-option
                   v-for="domain in aliyunDomains"
@@ -74,14 +74,14 @@
         </el-form-item>
 
         <el-form-item label="CF 回退源" required>
-          <el-row :gutter="10" style="width: 100%">
-            <el-col :span="10">
+          <el-row :gutter="isMobile ? 0 : 10" style="width: 100%">
+            <el-col :span="isMobile ? 24 : 10">
               <el-input v-model="domainForm.fallbackSubdomain" placeholder="回退子域名 (如: back)" />
             </el-col>
-            <el-col :span="2" style="text-align: center; line-height: 32px">
+            <el-col v-if="!isMobile" :span="2" style="text-align: center; line-height: 32px">
               .
             </el-col>
-            <el-col :span="12">
+            <el-col :span="isMobile ? 24 : 12" :style="{ marginTop: isMobile ? '10px' : '0' }">
               <el-select v-model="domainForm.fallbackRootDomain" placeholder="选择 CF 根域名" filterable style="width: 100%">
                 <el-option
                   v-for="zone in cfZones"
@@ -159,9 +159,9 @@
     </el-dialog>
 
     <!-- 域名详情对话框 -->
-    <el-dialog v-model="showDetailDialog" title="域名详情" width="700px">
-      <el-descriptions v-if="currentDomain" :column="2" border>
-        <el-descriptions-item label="完整域名" :span="2">
+    <el-dialog v-model="showDetailDialog" title="域名详情" :width="isMobile ? '95%' : '700px'">
+      <el-descriptions v-if="currentDomain" :column="isMobile ? 1 : 2" border>
+        <el-descriptions-item label="完整域名" :span="isMobile ? 1 : 2">
           {{ currentDomain.subdomain }}.{{ currentDomain.root_domain }}
         </el-descriptions-item>
         <el-descriptions-item label="回退源">
@@ -170,10 +170,10 @@
         <el-descriptions-item label="优选 IP">
           {{ currentDomain.optimized_ip }}
         </el-descriptions-item>
-        <el-descriptions-item label="CF 主机名 ID" :span="2">
+        <el-descriptions-item label="CF 主机名 ID" :span="isMobile ? 1 : 2">
           {{ currentDomain.cf_custom_hostname_id }}
         </el-descriptions-item>
-        <el-descriptions-item label="创建时间" :span="2">
+        <el-descriptions-item label="创建时间" :span="isMobile ? 1 : 2">
           {{ currentDomain.created_at }}
         </el-descriptions-item>
       </el-descriptions>
@@ -189,7 +189,7 @@
           </div>
         </template>
 
-        <el-form :model="certBindForm" label-width="100px">
+        <el-form :model="certBindForm" :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
           <el-form-item label="证书来源">
             <el-radio-group v-model="certBindForm.certMode">
               <el-radio-button value="none">无需配置</el-radio-button>
@@ -243,7 +243,7 @@
           </div>
         </template>
 
-        <el-form label-width="100px">
+        <el-form :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
           <el-form-item label="回源端口">
             <el-input-number v-model="originPortForm" :min="1" :max="65535" placeholder="默认 443" />
             <div style="color: #909399; font-size: 12px; margin-top: 4px">
@@ -257,9 +257,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
+
+const isMobile = inject('isMobile')
 
 const domains = ref([])
 const aliyunDomains = ref([])
