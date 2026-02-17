@@ -20,8 +20,7 @@ const routes = [
     children: [
       {
         path: '',
-        name: 'Dashboard',
-        component: Dashboard
+        redirect: '/domains'
       },
       {
         path: 'domains',

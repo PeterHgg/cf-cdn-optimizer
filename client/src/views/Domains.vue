@@ -473,20 +473,35 @@ async function addDomain(overwrite = false) {
   } catch (error) {
     console.error('添加域名失败:', error)
 
-    // 检查是否为阿里云记录已存在错误
-    if (error.response && error.response.status === 409 && error.response.data.code === 'ALIYUN_RECORD_EXISTS') {
+    // 检查记录冲突
+    if (error.response && error.response.status === 409 && error.response.data.code === 'DNS_RECORD_EXISTS') {
+      const details = error.response.data.details
+      let msg = '<div style="text-align: left">检测到现有 DNS 记录，请确认是否覆盖：<br/><br/>'
+
+      if (details.aliyun.exists) {
+        msg += '<b>阿里云记录:</b><br/>'
+        msg += details.aliyun.values.join('<br/>') + '<br/><br/>'
+      }
+
+      if (details.cloudflare.exists) {
+        msg += '<b>Cloudflare 记录:</b><br/>'
+        msg += details.cloudflare.values.join('<br/>') + '<br/><br/>'
+      }
+
+      msg += '<strong>注意：覆盖后原记录将被删除或修改！</strong></div>'
+
       try {
-        await ElMessageBox.confirm('阿里云已存在该域名的 DNS 记录，是否覆盖？', '提示', {
-          confirmButtonText: '覆盖',
+        await ElMessageBox.confirm(msg, 'DNS 记录冲突', {
+          confirmButtonText: '强制覆盖',
           cancelButtonText: '取消',
-          type: 'warning'
+          type: 'warning',
+          dangerouslyUseHTMLString: true,
+          distinguishCancelAndClose: true
         })
         // 用户确认覆盖，重新提交
         await addDomain(true)
         return
       } catch (e) {
-        if (e !== 'cancel') console.error(e)
-        // 用户取消或出错，停止执行
         return
       }
     }

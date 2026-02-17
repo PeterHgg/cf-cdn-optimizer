@@ -107,30 +107,38 @@ router.post('/', async (req, res) => {
     const fallbackOrigin = `${fallbackSubdomain}.${fallbackRootDomain}`;
 
     // 0. Pre-flight Checks (检查记录是否已存在)
+    const cfZoneId = await cfService.getZoneId();
 
     // 检查 Aliyun 记录
-    if (!overwrite) {
-      const aliyunCheck = await aliyunService.listDnsRecords(rootDomain, subdomain);
-      if (aliyunCheck.success && aliyunCheck.data && aliyunCheck.data.length > 0) {
-        // 检查是否存在完全匹配的 RR
-        const exists = aliyunCheck.data.some(r => r.RR === subdomain);
-        if (exists) {
-          return res.status(409).json({
-            success: false,
-            code: 'ALIYUN_RECORD_EXISTS',
-            message: `阿里云 DNS 记录已存在: ${fullDomain}`
-          });
-        }
+    const aliyunCheck = await aliyunService.listDnsRecords(rootDomain, subdomain);
+    let aliyunExists = false;
+    let aliyunValues = [];
+    if (aliyunCheck.success && aliyunCheck.data && aliyunCheck.data.length > 0) {
+      const matchedRecords = aliyunCheck.data.filter(r => r.RR === subdomain);
+      if (matchedRecords.length > 0) {
+        aliyunExists = true;
+        aliyunValues = matchedRecords.map(r => `${r.type}: ${r.value} (${r.line})`);
       }
     }
 
     // 检查 Cloudflare 记录
-    const cfZoneId = await cfService.getZoneId();
     const cfCheck = await cfService.listDnsRecords(cfZoneId, fallbackOrigin, 'A');
+    let cfExists = false;
+    let cfValues = [];
     if (cfCheck.success && cfCheck.data && cfCheck.data.length > 0) {
+      cfExists = true;
+      cfValues = cfCheck.data.map(r => `${r.type}: ${r.content} (Proxied: ${r.proxied})`);
+    }
+
+    if (!overwrite && (aliyunExists || cfExists)) {
       return res.status(409).json({
         success: false,
-        message: `Cloudflare DNS 记录已存在: ${fallbackOrigin}`
+        code: 'DNS_RECORD_EXISTS',
+        message: 'DNS 记录已存在',
+        details: {
+          aliyun: { exists: aliyunExists, values: aliyunValues },
+          cloudflare: { exists: cfExists, values: cfValues }
+        }
       });
     }
 

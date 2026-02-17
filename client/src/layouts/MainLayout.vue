@@ -11,10 +11,6 @@
         text-color="#bfcbd9"
         active-text-color="#409eff"
       >
-        <el-menu-item index="/">
-          <el-icon><HomeFilled /></el-icon>
-          <span>使用说明</span>
-        </el-menu-item>
         <el-menu-item index="/domains">
           <el-icon><Link /></el-icon>
           <span>域名管理</span>
@@ -53,10 +49,6 @@
         active-text-color="#409eff"
         @select="drawerVisible = false"
       >
-        <el-menu-item index="/">
-          <el-icon><HomeFilled /></el-icon>
-          <span>使用说明</span>
-        </el-menu-item>
         <el-menu-item index="/domains">
           <el-icon><Link /></el-icon>
           <span>域名管理</span>
@@ -156,7 +148,6 @@ const activeMenu = computed(() => route.path)
 
 const pageTitle = computed(() => {
   const titles = {
-    '/': '使用说明',
     '/domains': '域名管理',
     '/optimized-ips': '优选域名/IP池',
     '/certificates': 'SSL 证书管理',

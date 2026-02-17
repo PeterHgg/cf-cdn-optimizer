@@ -7,6 +7,13 @@
 
       <el-tabs v-model="activeTab">
         <el-tab-pane label="API 配置" name="api">
+          <el-alert type="info" :closable="false" style="margin-bottom: 20px">
+            <template #title>
+              <strong>工作原理：</strong> 自动化管理 Cloudflare 自定义主机名 + 阿里云 DNS 分地区解析，实现境内优选 IP 加速。
+              <br />
+              <strong>配置流程：</strong> 1. 配置 Cloudflare API (需开通 SaaS 功能) -> 2. 配置阿里云 DNS -> 3. 在域名管理中添加配置。
+            </template>
+          </el-alert>
           <!-- Cloudflare 配置 -->
           <el-card shadow="never" style="margin-bottom: 20px">
             <template #header>
@@ -35,8 +42,7 @@
                   <el-input
                     v-model="cfForm.apiKey"
                     type="password"
-                    show-password
-                    :placeholder="cfConfigured.apiKey ? '已配置（留空不修改）' : '请输入 Global API Key'"
+                    :placeholder="cfConfigured.apiKey ? '已配置（只写不读，留空不修改）' : '请输入 Global API Key'"
                   />
                   <el-button type="success" @click="loadZones" :loading="loadingZones">
                     获取 Zone 列表
@@ -99,6 +105,7 @@
               <el-form-item label="Access Key ID" required>
                 <el-input
                   v-model="aliyunForm.accessKeyId"
+                  type="password"
                   placeholder="请输入阿里云 Access Key ID"
                 />
               </el-form-item>
@@ -106,8 +113,7 @@
                 <el-input
                   v-model="aliyunForm.accessKeySecret"
                   type="password"
-                  show-password
-                  :placeholder="cfConfigured.aliyunSecret ? '已配置（留空不修改）' : '请输入阿里云 Access Key Secret'"
+                  :placeholder="cfConfigured.aliyunSecret ? '已配置（只写不读，留空不修改）' : '请输入阿里云 Access Key Secret'"
                 />
               </el-form-item>
               <el-form-item>
@@ -272,7 +278,7 @@
               CF-CDN-Optimizer
             </el-descriptions-item>
             <el-descriptions-item label="版本">
-              v0.1.46
+              v0.1.50
             </el-descriptions-item>
             <el-descriptions-item label="描述">
               Cloudflare CDN 优选加速管理平台 - 自动化管理 Cloudflare 自定义主机名 + 阿里云 DNS 优选 IP

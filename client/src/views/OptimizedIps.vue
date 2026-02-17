@@ -21,26 +21,8 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="区域" width="100" v-if="!isMobile" />
-        <el-table-column label="延迟" width="100" v-if="!isMobile">
-          <template #default="{ row }">
-            <span v-if="row.latency">{{ row.latency.toFixed(0) }} ms</span>
-            <span v-else style="color: #909399">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'info'" size="small">
-              {{ row.is_active ? '启用' : '禁用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
         <el-table-column label="操作" :width="isMobile ? 110 : 180" :fixed="isMobile ? false : 'right'">
           <template #default="{ row }">
-            <el-button size="small" @click="toggleStatus(row)" :icon="isMobile ? '' : ''">
-              {{ isMobile ? '' : (row.is_active ? '禁用' : '启用') }}
-              <el-icon v-if="isMobile"><Operation /></el-icon>
-            </el-button>
             <el-button size="small" type="danger" @click="deleteIp(row)" :icon="isMobile ? '' : ''">
               {{ isMobile ? '' : '删除' }}
               <el-icon v-if="isMobile"><Delete /></el-icon>
@@ -81,7 +63,7 @@
 <script setup>
 import { ref, onMounted, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Operation, Delete } from '@element-plus/icons-vue'
+import { Delete } from '@element-plus/icons-vue'
 import api from '@/api'
 
 const isMobile = inject('isMobile')
@@ -126,18 +108,6 @@ async function addIp() {
     }
   } catch (error) {
     console.error('添加优选 IP 失败:', error)
-  }
-}
-
-async function toggleStatus(ip) {
-  try {
-    const res = await api.put(`/optimized-ips/${ip.id}/toggle`)
-    if (res.data.success) {
-      ElMessage.success('状态已更新')
-      loadIps()
-    }
-  } catch (error) {
-    console.error('切换状态失败:', error)
   }
 }
 
