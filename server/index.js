@@ -5,10 +5,25 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
+const httpProxy = require('http-proxy');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// 创建代理实例
+const proxy = httpProxy.createProxyServer({
+  xfwd: true // 添加 X-Forwarded-For 等头部
+});
+
+// 监听代理错误，防止崩溃
+proxy.on('error', (err, req, res) => {
+  console.error('[Proxy Error]:', err.message);
+  if (!res.headersSent) {
+    res.writeHead(502, { 'Content-Type': 'text/plain' });
+  }
+  res.end('Bad Gateway: Unable to connect to the backend service.');
+});
 
 // 当前运行的服务器实例（用于重启）
 let currentServer = null;
@@ -85,7 +100,36 @@ async function startServer() {
       cert: fs.readFileSync(httpsConfig.certPath),
       key: fs.readFileSync(httpsConfig.keyPath)
     };
-    currentServer = https.createServer(sslOptions, app);
+
+    // 创建 HTTPS 服务器
+    currentServer = https.createServer(sslOptions, async (req, res) => {
+      const host = req.headers.host;
+      if (host) {
+        try {
+          const { dbGet } = require('./database/db');
+          // 查找是否有匹配此域名的配置，且配置了回源端口
+          const [subdomain, ...rest] = host.split(':').shift().split('.');
+          const rootDomain = rest.join('.');
+
+          const domainConfig = await dbGet(
+            'SELECT origin_port FROM domain_configs WHERE subdomain = ? AND root_domain = ? AND origin_port IS NOT NULL',
+            [subdomain, rootDomain]
+          );
+
+          // 如果匹配到了配置，且目的端口不是当前面板端口，则执行反代
+          if (domainConfig && domainConfig.origin_port && domainConfig.origin_port !== PORT) {
+            console.log(`[Proxy] Forwarding ${host} -> localhost:${domainConfig.origin_port}`);
+            return proxy.web(req, res, { target: `http://127.0.0.1:${domainConfig.origin_port}` });
+          }
+        } catch (e) {
+          console.error('[Proxy Lookup Error]:', e.message);
+        }
+      }
+
+      // 如果没有匹配到反代规则，则走正常的面板逻辑
+      app(req, res);
+    });
+
     currentServer.listen(PORT, () => {
       console.log(`🚀 CF-CDN-Optimizer 服务已启动 (HTTPS)`);
       console.log(`📡 服务地址: https://localhost:${PORT}`);
