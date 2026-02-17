@@ -64,10 +64,20 @@ async function getClient() {
 async function getZoneId() {
   if (!cachedZoneId) {
     cachedZoneId = await getSetting('cf_zone_id', 'CF_ZONE_ID');
+
+    // 如果没有配置 Zone ID，尝试自动获取第一个
+    if (!cachedZoneId) {
+      console.log('未配置 Zone ID，尝试自动获取...');
+      const zones = await listZones();
+      if (zones.success && zones.data && zones.data.length > 0) {
+        cachedZoneId = zones.data[0].id;
+        console.log('自动获取到 Zone ID:', cachedZoneId, `(${zones.data[0].name})`);
+      }
+    }
   }
 
   if (!cachedZoneId) {
-    throw new Error('未配置 Cloudflare Zone ID，请在设置页面配置');
+    throw new Error('未配置 Cloudflare Zone ID，且无法自动获取，请在设置页面配置');
   }
 
   return cachedZoneId;

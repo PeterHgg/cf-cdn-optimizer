@@ -45,30 +45,26 @@
                     type="password"
                     :placeholder="cfConfigured.apiKey ? '已配置（只写不读，留空不修改）' : '请输入 Global API Key'"
                   />
-                  <el-button type="success" @click="loadZones" :loading="loadingZones">
-                    获取 Zone 列表
-                  </el-button>
                 </div>
                 <div class="form-tip">Global API Key 拥有完整权限，请在 "My Profile -> API Tokens" 中查看。</div>
               </el-form-item>
 
-              <el-form-item label="Account ID" required>
+              <el-form-item label="Account ID (可选)">
                 <el-input
                   v-model="cfForm.accountId"
                   type="password"
-                  :placeholder="cfConfigured.accountId ? '已配置（只写不读，留空不修改）' : '请输入 Cloudflare Account ID'"
+                  :placeholder="cfConfigured.accountId ? '已配置（留空则尝试自动获取）' : '请输入 Cloudflare Account ID (留空则尝试自动获取)'"
                 />
               </el-form-item>
 
-              <el-form-item label="Zone ID (域名)" required>
+              <el-form-item label="Zone ID (域名) (可选)">
                 <el-select
                   v-model="cfForm.zoneId"
-                  placeholder="请选择或手动输入 Zone ID"
+                  placeholder="请选择、手动输入或留空自动获取"
                   filterable
                   allow-create
                   default-first-option
                   style="width: 100%"
-                  @change="handleZoneChange"
                 >
                   <el-option
                     v-for="zone in zoneOptions"
@@ -280,7 +276,7 @@
               CF-CDN-Optimizer
             </el-descriptions-item>
             <el-descriptions-item label="版本">
-              v0.1.54
+              v0.1.55
             </el-descriptions-item>
             <el-descriptions-item label="描述">
               Cloudflare CDN 优选加速管理平台 - 自动化管理 Cloudflare 自定义主机名 + 阿里云 DNS 优选 IP
@@ -503,25 +499,14 @@ async function loadSettings() {
 // 获取 Zone 列表
 async function loadZones() {
   if (!cfForm.value.email && !cfConfigured.value.email) {
-    ElMessage.warning('请先填写 Email')
     return
   }
   if (!cfForm.value.apiKey && !cfConfigured.value.apiKey) {
-    ElMessage.warning('请先填写 Global API Key')
     return
   }
 
   loadingZones.value = true
   try {
-    const payload = {}
-    if (cfForm.value.email) payload.cf_email = cfForm.value.email
-    if (cfForm.value.apiKey) payload.cf_api_key = cfForm.value.apiKey
-
-    // 如果填写了新信息，先保存
-    if (Object.keys(payload).length > 0) {
-      await api.put('/settings/batch', { settings: payload })
-    }
-
     // 调用后端获取 Zone 列表
     const res = await api.get('/cloudflare/zones')
     if (res.data.success) {
@@ -531,31 +516,36 @@ async function loadZones() {
         account: z.account // 保存 account 信息
       }))
 
-      // 自动填充 Account ID (如果还没填)
-      if (zoneOptions.value.length > 0 && !cfForm.value.accountId && !cfConfigured.value.accountId) {
-        // 优先尝试找当前选中的 zone (如果有)
-        if (cfForm.value.zoneId) {
-          const currentZone = zoneOptions.value.find(z => z.id === cfForm.value.zoneId)
-          if (currentZone && currentZone.account) {
-            cfForm.value.accountId = currentZone.account.id
-          }
-        }
-        // 否则使用第一个 zone 的 account id
-        else if (zoneOptions.value[0].account) {
-          cfForm.value.accountId = zoneOptions.value[0].account.id
+      // 自动保存 Account ID 和 Zone ID (如果还没填)
+      const autoSettings = {}
+
+      if (zoneOptions.value.length > 0) {
+        // 1. 如果没填 Zone ID，取第一个
+        if (!cfForm.value.zoneId && !cfConfigured.value.zoneId) {
+          cfForm.value.zoneId = zoneOptions.value[0].id
+          autoSettings.cf_zone_id = zoneOptions.value[0].id
         }
 
-        if (cfForm.value.accountId) {
-          ElMessage.success('已自动获取并填充 Account ID')
+        // 2. 如果没填 Account ID，根据 Zone 获取
+        if (!cfForm.value.accountId && !cfConfigured.value.accountId) {
+          const targetZone = zoneOptions.value.find(z => z.id === cfForm.value.zoneId) || zoneOptions.value[0]
+          if (targetZone && targetZone.account) {
+            cfForm.value.accountId = targetZone.account.id
+            autoSettings.cf_account_id = targetZone.account.id
+          }
         }
       }
 
-      ElMessage.success('成功获取 Zone 列表')
-    } else {
-      ElMessage.error('获取列表失败: ' + res.data.message)
+      if (Object.keys(autoSettings).length > 0) {
+        await api.put('/settings/batch', { settings: autoSettings })
+        cfConfigured.value.accountId = !!cfForm.value.accountId
+        cfConfigured.value.zoneId = !!cfForm.value.zoneId
+        cfForm.value.accountId = '' // 清空输入框显示“已配置”
+        ElMessage.success('已自动获取并完善 Cloudflare ID 配置')
+      }
     }
   } catch (error) {
-    ElMessage.error('操作失败: ' + (error.response?.data?.message || error.message))
+    console.error('自动获取 Zone 失败:', error)
   } finally {
     loadingZones.value = false
   }
@@ -576,11 +566,9 @@ async function saveCfSettings() {
   const hasKey = cfForm.value.apiKey || cfConfigured.value.apiKey
   const hasToken = cfForm.value.apiToken || cfConfigured.value.apiToken
   const hasAuth = (hasEmail && hasKey) || hasToken
-  const hasAccount = cfForm.value.accountId || cfConfigured.value.accountId
-  const hasZone = cfForm.value.zoneId || cfConfigured.value.zoneId
 
-  if (!hasAuth || !hasAccount || !hasZone) {
-    ElMessage.warning('请填写完整的 Cloudflare 配置')
+  if (!hasAuth) {
+    ElMessage.warning('请填写完整的 Cloudflare 认证信息 (Email + API Key)')
     return
   }
 
@@ -601,6 +589,12 @@ async function saveCfSettings() {
     await api.put('/settings/batch', { settings })
     ElMessage.success('Cloudflare 配置已保存')
 
+    // 如果没有填 Account ID 或 Zone ID，且当前后端也没有，则尝试自动获取
+    if ((!cfForm.value.accountId && !cfConfigured.value.accountId) || (!cfForm.value.zoneId && !cfConfigured.value.zoneId)) {
+      ElMessage.info('检测到 ID 留空，正在尝试自动获取并完善配置...')
+      await loadZones()
+    }
+
     // 保存成功后更新已配置状态并清空表单
     if (cfForm.value.email) {
       cfConfigured.value.email = true
@@ -609,6 +603,9 @@ async function saveCfSettings() {
     if (cfForm.value.accountId) {
       cfConfigured.value.accountId = true
       cfForm.value.accountId = ''
+    }
+    if (cfForm.value.zoneId) {
+      cfConfigured.value.zoneId = true
     }
     if (cfForm.value.apiKey) {
       cfConfigured.value.apiKey = true
