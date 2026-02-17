@@ -433,95 +433,6 @@ async function deleteDnsRecord(zoneId, recordId) {
   }
 }
 
-/**
- * 生成 Origin CA 证书
- */
-async function createOriginCertificate(hostnames, validityDays = 5475) {
-  try {
-    const cf = await getClient();
-    const forge = require('node-forge');
-
-    // 1. 本地生成 RSA 密钥对
-    console.log('[Cert] Generating 2048-bit RSA key pair...');
-    const keys = forge.pki.rsa.generateKeyPair(2048);
-    const privateKeyPem = forge.pki.privateKeyToPem(keys.privateKey);
-
-    // 2. 创建 CSR
-    console.log('[Cert] Creating Certificate Signing Request (CSR)...');
-    const csr = forge.pki.createCertificationRequest();
-    csr.publicKey = keys.publicKey;
-    csr.setSubject([
-      { name: 'commonName', value: hostnames[0] },
-      { name: 'organizationName', value: 'CF-CDN-Optimizer' }
-    ]);
-
-    // 添加备用域名 (SAN)
-    const altNames = hostnames.map(h => ({ type: 2, value: h }));
-    csr.setAttributes([{
-      name: 'extensionRequest',
-      extensions: [{
-        name: 'subjectAltName',
-        altNames: altNames
-      }]
-    }]);
-
-    // 自签名 CSR
-    csr.sign(keys.privateKey);
-    const csrPem = forge.pki.certificationRequestToPem(csr);
-
-    // 3. 调用 Cloudflare API 签名 CSR
-    // 关键：Cloudflare Origin CA API 的 body 结构可能因版本而异
-    // 对于 CSR 模式，通常只需要 csr, requested_validity 和 request_type
-    const body = {
-      csr: csrPem,
-      hostnames: hostnames, // 有些版本需要 hostnames 与 CSR 匹配
-      requested_validity: validityDays,
-      request_type: 'origin-rsa'
-    };
-
-    console.log('[Cert] Requesting Cloudflare to sign the CSR for:', hostnames.join(', '));
-    const authHeaders = cf.authType === 'key'
-      ? { 'X-Auth-Email': cf.email, 'X-Auth-Key': cf.apiKey }
-      : { 'Authorization': `Bearer ${cf.apiToken}` };
-
-    const resp = await axios.post('https://api.cloudflare.com/client/v4/certificates', body, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders
-      }
-    });
-
-    if (!resp.data.success) {
-      const errorMsg = resp.data.errors?.[0]?.message || 'Cloudflare API error';
-      const errorCode = resp.data.errors?.[0]?.code;
-      throw new Error(`${errorMsg}${errorCode ? ' (Code: ' + errorCode + ')' : ''}`);
-    }
-
-    // 合并本地私钥和远程证书
-    const result = resp.data.result;
-    return {
-      success: true,
-      data: {
-        certificate: result.certificate,
-        private_key: privateKeyPem, // 使用我们本地生成的私钥
-        expires_on: result.expires_on
-      }
-    };
-
-  } catch (error) {
-    console.error('生成证书失败:', error.response?.data || error.message);
-    let message = error.message;
-    if (error.response?.data?.errors?.[0]) {
-      const cfErr = error.response.data.errors[0];
-      message = `${cfErr.message}${cfErr.code ? ' (Code: ' + cfErr.code + ')' : ''}`;
-    }
-    return {
-      success: false,
-      message: message
-    };
-  }
-}
-
 module.exports = {
   createCustomHostname,
   getCustomHostnameStatus,
@@ -533,6 +444,5 @@ module.exports = {
   addDnsRecord,
   deleteDnsRecord,
   listDnsRecords,
-  getZoneId,
-  createOriginCertificate
+  getZoneId
 };
