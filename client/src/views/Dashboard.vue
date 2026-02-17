@@ -3,29 +3,6 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>快速开始</span>
-        </div>
-      </template>
-      <el-steps
-        :active="0"
-        finish-status="success"
-        :direction="isMobile ? 'vertical' : 'horizontal'"
-        :style="{ marginBottom: '30px', height: isMobile ? '300px' : 'auto' }"
-      >
-        <el-step title="配置 API" description="设置 Cloudflare 和阿里云 API 密钥" />
-        <el-step title="添加优选 IP" description="配置优选 IP/域名池" />
-        <el-step title="创建域名" description="添加自定义主机名和 DNS 解析" />
-        <el-step title="完成" description="开始使用加速服务" />
-      </el-steps>
-      <div class="actions">
-        <el-button type="primary" @click="$router.push('/settings')">前往配置 API 密钥</el-button>
-        <el-button @click="$router.push('/domains')">管理域名</el-button>
-      </div>
-    </el-card>
-
-    <el-card style="margin-top: 20px">
-      <template #header>
-        <div class="card-header">
           <span>工作原理</span>
         </div>
       </template>
