@@ -27,9 +27,6 @@
             </template>
 
             <el-form :model="cfForm" :label-width="isMobile ? 'auto' : '180px'" :label-position="isMobile ? 'top' : 'right'">
-              <!-- API Token (已废弃，保留兼容) -->
-              <!-- 改为 Email + Global API Key -->
-
               <el-form-item label="Cloudflare Email" required>
                 <el-input
                   v-model="cfForm.email"
@@ -46,36 +43,7 @@
                     :placeholder="cfConfigured.apiKey ? '已配置（只写不读，留空不修改）' : '请输入 Global API Key'"
                   />
                 </div>
-                <div class="form-tip">Global API Key 拥有完整权限，请在 "My Profile -> API Tokens" 中查看。</div>
-              </el-form-item>
-
-              <el-form-item label="Account ID (可选)">
-                <el-input
-                  v-model="cfForm.accountId"
-                  type="password"
-                  :placeholder="cfConfigured.accountId ? '已配置（留空则尝试自动获取）' : '请输入 Cloudflare Account ID (留空则尝试自动获取)'"
-                />
-              </el-form-item>
-
-              <el-form-item label="Zone ID (域名) (可选)">
-                <el-select
-                  v-model="cfForm.zoneId"
-                  placeholder="请选择、手动输入或留空自动获取"
-                  filterable
-                  allow-create
-                  default-first-option
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="zone in zoneOptions"
-                    :key="zone.id"
-                    :label="zone.name"
-                    :value="zone.id"
-                  >
-                    <span style="float: left">{{ zone.name }}</span>
-                    <span style="float: right; color: #8492a6; font-size: 13px">{{ zone.id }}</span>
-                  </el-option>
-                </el-select>
+                <div class="form-tip">系统将自动发现您的 Account ID 和 Zone ID。</div>
               </el-form-item>
 
               <el-form-item>
@@ -301,36 +269,14 @@
       </el-alert>
 
       <el-collapse>
-        <el-collapse-item title="1. 获取 Global API Key" name="1">
+        <el-collapse-item title="1. 获取认证信息" name="1">
           <ol>
             <li>登录 <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank">Cloudflare Dashboard → My Profile → API Tokens</a></li>
-            <li>找到 <strong>Global API Key</strong></li>
-            <li>点击 <strong>View</strong> 查看并复制 Key</li>
+            <li>找到 <strong>Global API Key</strong>，点击 <strong>View</strong> 查看并复制</li>
             <li>同时记录您的登录邮箱 (Email)</li>
           </ol>
           <el-alert type="warning" :closable="false">
-            Global API Key 拥有账户的完全控制权，请妥善保管，不要泄露给他人。
-          </el-alert>
-        </el-collapse-item>
-
-        <el-collapse-item title="2. 获取 Account ID" name="2">
-          <ol>
-            <li>登录 <a href="https://dash.cloudflare.com" target="_blank">Cloudflare Dashboard</a></li>
-            <li>点击任意一个域名进入</li>
-            <li>在右侧边栏找到 <strong>Account ID</strong>（32位字符串）</li>
-            <li>点击复制</li>
-          </ol>
-        </el-collapse-item>
-
-        <el-collapse-item title="3. 获取 Zone ID" name="3">
-          <ol>
-            <li>登录 <a href="https://dash.cloudflare.com" target="_blank">Cloudflare Dashboard</a></li>
-            <li>点击您要使用的<strong>主域名</strong>进入</li>
-            <li>在右侧边栏找到 <strong>Zone ID</strong>（32位字符串）</li>
-            <li>点击复制</li>
-          </ol>
-          <el-alert type="info" :closable="false">
-            Zone ID 是您的 SaaS Fallback Origin 所在域名的 Zone ID
+            Global API Key 拥有账户的完全控制权，请妥善保管。<strong>系统将根据此 Key 自动获取您的 Account ID 和 Zone ID。</strong>
           </el-alert>
         </el-collapse-item>
       </el-collapse>
