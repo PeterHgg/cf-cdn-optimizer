@@ -138,9 +138,11 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="回源端口">
-          <el-input-number v-model="domainForm.originPort" :min="1" :max="65535" placeholder="默认 443" />
-          <div style="color: #909399; font-size: 12px; margin-top: 4px">如需回源到非 443 端口请填写，留空则默认 443</div>
+        <el-form-item label="本地服务端口">
+          <el-input-number v-model="domainForm.originPort" :min="1" :max="65535" placeholder="例如: 8080" />
+          <div style="color: #909399; font-size: 12px; margin-top: 4px">
+            流量将由面板网关转发至本地此端口，支持 1-65535 任意端口。
+          </div>
         </el-form-item>
 
         <el-divider content-position="left">回源证书配置</el-divider>
@@ -254,11 +256,11 @@
         </el-form>
       </el-card>
 
-      <!-- 回源端口配置 -->
+      <!-- 本地服务端口配置 -->
       <el-card shadow="never" style="margin-top: 20px">
         <template #header>
           <div class="card-header">
-            <span>回源端口配置</span>
+            <span>本地服务端口配置</span>
             <el-button type="primary" size="small" @click="saveOriginPort" :loading="savingPort">
               保存端口配置
             </el-button>
@@ -266,10 +268,10 @@
         </template>
 
         <el-form :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
-          <el-form-item label="回源端口">
-            <el-input-number v-model="originPortForm" :min="1" :max="65535" placeholder="默认 443" />
+          <el-form-item label="服务端口">
+            <el-input-number v-model="originPortForm" :min="1" :max="65535" placeholder="例如: 8080" />
             <div style="color: #909399; font-size: 12px; margin-top: 4px">
-              当前端口: {{ currentDomain?.origin_port || 443 }}。修改后将自动同步 Cloudflare Origin Rules。
+              当前端口: {{ currentDomain?.origin_port || 443 }}。流量将通过面板网关反代至此端口。
             </div>
           </el-form-item>
         </el-form>
