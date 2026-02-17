@@ -226,10 +226,32 @@ async function syncOriginRules() {
     }
 
     // 2. 如果面板在标准 443 端口，理论上不需要 Origin Rules 重写端口
-    // 但为了保险，我们还是可以统一生成一条规则，或者在此处判断
+    // 这种模式下，CF 默认就会回源到 443，面板作为网关直接分发流量
     if (panelPort === 443) {
-       console.log('面板运行在 443 端口，无需设置 Origin Rules 重写端口');
-       // 可选：清理旧的 [CDN优选] 规则
+       console.log('面板运行在 443 端口，进入纯网关模式，清理旧的 Origin Rules');
+
+       // 获取现有规则集，移除所有 [CDN优选] 规则
+       let rulesetId = null;
+       let existingRules = [];
+       try {
+         const rsResp = await axios.get(
+           `https://api.cloudflare.com/client/v4/zones/${zoneId}/rulesets/phases/http_request_origin/entrypoint`,
+           { headers }
+         );
+         if (rsResp.data.success && rsResp.data.result) {
+           rulesetId = rsResp.data.result.id;
+           existingRules = rsResp.data.result.rules || [];
+         }
+       } catch (e) {
+         if (e.response?.status !== 404) throw e;
+       }
+
+       const manualRules = existingRules.filter(r => !r.description?.startsWith('[CDN优选]'));
+       if (rulesetId) {
+         await axios.put(`https://api.cloudflare.com/client/v4/zones/${zoneId}/rulesets/${rulesetId}`, { rules: manualRules }, { headers });
+       }
+       console.log('Origin Rules 已清理完成 (纯网关模式)');
+       return { success: true };
     }
 
     // 3. 构建匹配所有受管域名的规则
@@ -448,14 +470,16 @@ async function createOriginCertificate(hostnames, validityDays = 5475) {
     const csrPem = forge.pki.certificationRequestToPem(csr);
 
     // 3. 调用 Cloudflare API 签名 CSR
+    // 关键：Cloudflare Origin CA API 的 body 结构可能因版本而异
+    // 对于 CSR 模式，通常只需要 csr, requested_validity 和 request_type
     const body = {
-      hostnames: hostnames,
+      csr: csrPem,
+      hostnames: hostnames, // 有些版本需要 hostnames 与 CSR 匹配
       requested_validity: validityDays,
-      request_type: 'origin-rsa',
-      csr: csrPem
+      request_type: 'origin-rsa'
     };
 
-    console.log('[Cert] Requesting Cloudflare to sign the CSR...');
+    console.log('[Cert] Requesting Cloudflare to sign the CSR for:', hostnames.join(', '));
     const authHeaders = cf.authType === 'key'
       ? { 'X-Auth-Email': cf.email, 'X-Auth-Key': cf.apiKey }
       : { 'Authorization': `Bearer ${cf.apiToken}` };
