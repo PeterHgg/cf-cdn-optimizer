@@ -200,7 +200,7 @@ async function listCustomHostnames() {
 
 /**
  * 创建/更新 Origin Rules（使用 Rulesets API）
- * 按端口分组，每个端口一条规则，匹配所有使用该端口的域名
+ * 逻辑：确保所有受管域名在 CF 端都回源到面板当前的运行端口
  */
 async function syncOriginRules() {
   try {
@@ -208,31 +208,61 @@ async function syncOriginRules() {
     const axios = require('axios');
     const zoneId = await getZoneId();
     const cf = await getClient();
+    const panelPort = parseInt(process.env.PORT || 3000);
 
     const authHeaders = cf.authType === 'key'
       ? { 'X-Auth-Email': cf.email, 'X-Auth-Key': cf.apiKey }
       : { 'Authorization': `Bearer ${cf.apiToken}` };
     const headers = { 'Content-Type': 'application/json', ...authHeaders };
 
-    // 1. 获取所有需要端口转发的域名
+    // 1. 获取所有受管域名
     const domains = await dbAll(
-      'SELECT subdomain, root_domain, fallback_origin, origin_port FROM domain_configs WHERE origin_port IS NOT NULL AND origin_port != 443'
+      'SELECT subdomain, root_domain, fallback_origin FROM domain_configs'
     );
 
-    // 2. 按端口分组
-    const portGroups = {};
-    for (const d of domains) {
-      const port = d.origin_port;
-      if (!portGroups[port]) portGroups[port] = [];
-      const fullDomain = `${d.subdomain}.${d.root_domain}`;
-      portGroups[port].push(fullDomain);
-      // 同时匹配回退源
-      if (d.fallback_origin) {
-        portGroups[port].push(d.fallback_origin);
-      }
+    if (domains.length === 0) {
+      console.log('无受管域名，跳过 Origin Rules 同步');
+      return { success: true };
     }
 
-    // 3. 获取当前 zone 的 origin rules ruleset
+    // 2. 如果面板在标准 443 端口，理论上不需要 Origin Rules 重写端口
+    // 但为了保险，我们还是可以统一生成一条规则，或者在此处判断
+    if (panelPort === 443) {
+       console.log('面板运行在 443 端口，无需设置 Origin Rules 重写端口');
+       // 可选：清理旧的 [CDN优选] 规则
+    }
+
+    // 3. 构建匹配所有受管域名的规则
+    const hostnames = [];
+    for (const d of domains) {
+      hostnames.push(`${d.subdomain}.${d.root_domain}`);
+      if (d.fallback_origin) hostnames.push(d.fallback_origin);
+    }
+    const uniqueHostnames = [...new Set(hostnames)];
+
+    // 分批处理，防止表达式过长（Cloudflare 有长度限制）
+    const batchSize = 10;
+    const autoRules = [];
+
+    for (let i = 0; i < uniqueHostnames.length; i += batchSize) {
+      const batch = uniqueHostnames.slice(i, i + batchSize);
+      const conditions = batch.map(h => `(http.request.full_uri wildcard r"https://${h}/*")`);
+      const expression = conditions.join(' or ');
+
+      autoRules.push({
+        action: 'route',
+        action_parameters: {
+          origin: {
+            port: panelPort
+          }
+        },
+        expression: expression,
+        description: `[CDN优选] 统一回源至面板端口 ${panelPort} (批次 ${Math.floor(i/batchSize) + 1})`,
+        enabled: true
+      });
+    }
+
+    // 4. 获取现有规则集并合并
     let rulesetId = null;
     let existingRules = [];
     try {
@@ -245,66 +275,23 @@ async function syncOriginRules() {
         existingRules = rsResp.data.result.rules || [];
       }
     } catch (e) {
-      // 404 表示还没有 origin rules ruleset，后面创建时会自动生成
-      if (e.response?.status !== 404) {
-        throw e;
-      }
+      if (e.response?.status !== 404) throw e;
     }
 
-    // 4. 保留非本系统管理的规则（不以 [CDN优选] 开头的）
     const manualRules = existingRules.filter(r => !r.description?.startsWith('[CDN优选]'));
-
-    // 5. 构建本系统管理的规则
-    const autoRules = [];
-    for (const [port, hostnames] of Object.entries(portGroups)) {
-      // 去重
-      const unique = [...new Set(hostnames)];
-      // 构建 expression: (http.request.full_uri wildcard r"https://host1/*") or (http.request.full_uri wildcard r"https://host2/*")
-      const conditions = unique.map(h =>
-        `(http.request.full_uri wildcard r"https://${h}/*")`
-      );
-      const expression = conditions.join(' or ');
-
-      autoRules.push({
-        action: 'route',
-        action_parameters: {
-          origin: {
-            port: parseInt(port)
-          }
-        },
-        expression: expression,
-        description: `[CDN优选] 回源${port}`,
-        enabled: true
-      });
-    }
-
-    // 6. 合并规则（手动规则在前，自动规则在后）
     const allRules = [...manualRules, ...autoRules];
 
-    // 7. 更新或创建 ruleset
+    // 5. 更新
     if (rulesetId) {
-      // 更新现有 ruleset
-      await axios.put(
-        `https://api.cloudflare.com/client/v4/zones/${zoneId}/rulesets/${rulesetId}`,
-        { rules: allRules },
-        { headers }
-      );
+      await axios.put(`https://api.cloudflare.com/client/v4/zones/${zoneId}/rulesets/${rulesetId}`, { rules: allRules }, { headers });
     } else if (autoRules.length > 0) {
-      // 创建新的 ruleset
-      await axios.post(
-        `https://api.cloudflare.com/client/v4/zones/${zoneId}/rulesets`,
-        {
-          name: 'default',
-          kind: 'zone',
-          phase: 'http_request_origin',
-          rules: allRules
-        },
-        { headers }
-      );
+      await axios.post(`https://api.cloudflare.com/client/v4/zones/${zoneId}/rulesets`, {
+        name: 'default', kind: 'zone', phase: 'http_request_origin', rules: allRules
+      }, { headers });
     }
 
-    console.log(`Origin Rules 同步完成: ${autoRules.length} 条自动规则`);
-    return { success: true, rulesCount: autoRules.length };
+    console.log(`Origin Rules 同步完成: 统一指向端口 ${panelPort}`);
+    return { success: true };
   } catch (error) {
     console.error('同步 Origin Rules 失败:', error.response?.data || error.message);
     return { success: false, message: error.response?.data?.errors?.[0]?.message || error.message };
@@ -430,40 +417,45 @@ async function deleteDnsRecord(zoneId, recordId) {
 async function createOriginCertificate(hostnames, validityDays = 5475) {
   try {
     const cf = await getClient();
-    // Cloudflare Node.js 库通常没有直接封装 Origin CA 的 endpoint，或者位置比较隐蔽
-    // 这里我们尝试使用通用的 fetch 方法或者 request 方法，如果库支持
-    // 假设 library 是 cloudflare v3/v4
+    const forge = require('node-forge');
 
-    // 构造请求体
+    // 1. 本地生成 RSA 密钥对
+    console.log('[Cert] Generating 2048-bit RSA key pair...');
+    const keys = forge.pki.rsa.generateKeyPair(2048);
+    const privateKeyPem = forge.pki.privateKeyToPem(keys.privateKey);
+
+    // 2. 创建 CSR
+    console.log('[Cert] Creating Certificate Signing Request (CSR)...');
+    const csr = forge.pki.createCertificationRequest();
+    csr.publicKey = keys.publicKey;
+    csr.setSubject([
+      { name: 'commonName', value: hostnames[0] },
+      { name: 'organizationName', value: 'CF-CDN-Optimizer' }
+    ]);
+
+    // 添加备用域名 (SAN)
+    const altNames = hostnames.map(h => ({ type: 2, value: h }));
+    csr.setAttributes([{
+      name: 'extensionRequest',
+      extensions: [{
+        name: 'subjectAltName',
+        altNames: altNames
+      }]
+    }]);
+
+    // 自签名 CSR
+    csr.sign(keys.privateKey);
+    const csrPem = forge.pki.certificationRequestToPem(csr);
+
+    // 3. 调用 Cloudflare API 签名 CSR
     const body = {
       hostnames: hostnames,
+      requested_validity: validityDays,
       request_type: 'origin-rsa',
-      requested_validity: validityDays
+      csr: csrPem
     };
 
-    // 如果库有直接的方法
-    if (cf.originCA && cf.originCA.create) {
-      const response = await cf.originCA.create(body);
-      return { success: true, data: response };
-    }
-
-    // 如果没有直接方法，尝试使用 certificates endpoint (Origin CA)
-    // 许多库版本将其放在 cf.certificates 下，但这通常是 Client Certificates
-    // Origin CA 的 API 端点是 POST /certificates
-
-    // 既然我们有 cf 实例，我们可以利用它来发送请求，但库的具体实现可能不同
-    // 安全起见，我们直接抛出错误让上层处理，或者在这里使用 axios (如果引入了)
-    // 但为了保持一致性，我们尝试寻找库的通用请求方法
-
-    // 尝试 cf.certificates.create (有些版本映射到 Origin CA)
-    if (cf.originCA && cf.originCA.create) {
-       const response = await cf.originCA.create(body);
-       return { success: true, data: response };
-    }
-
-    // 如果库不支持，回退到原生 HTTP 请求
-    // Cloudflare API Endpoint: POST https://api.cloudflare.com/client/v4/certificates
-    const axios = require('axios');
+    console.log('[Cert] Requesting Cloudflare to sign the CSR...');
     const authHeaders = cf.authType === 'key'
       ? { 'X-Auth-Email': cf.email, 'X-Auth-Key': cf.apiKey }
       : { 'Authorization': `Bearer ${cf.apiToken}` };
@@ -481,7 +473,16 @@ async function createOriginCertificate(hostnames, validityDays = 5475) {
       throw new Error(`${errorMsg}${errorCode ? ' (Code: ' + errorCode + ')' : ''}`);
     }
 
-    return { success: true, data: resp.data.result };
+    // 合并本地私钥和远程证书
+    const result = resp.data.result;
+    return {
+      success: true,
+      data: {
+        certificate: result.certificate,
+        private_key: privateKeyPem, // 使用我们本地生成的私钥
+        expires_on: result.expires_on
+      }
+    };
 
   } catch (error) {
     console.error('生成证书失败:', error.response?.data || error.message);

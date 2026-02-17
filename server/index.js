@@ -107,18 +107,21 @@ async function startServer() {
       if (host) {
         try {
           const { dbGet } = require('./database/db');
-          // 查找是否有匹配此域名的配置，且配置了回源端口
-          const [subdomain, ...rest] = host.split(':').shift().split('.');
-          const rootDomain = rest.join('.');
+          // 移除端口号，获取纯域名
+          const hostname = host.split(':')[0];
 
-          const domainConfig = await dbGet(
-            'SELECT origin_port FROM domain_configs WHERE subdomain = ? AND root_domain = ? AND origin_port IS NOT NULL',
-            [subdomain, rootDomain]
+          // 1. 尝试直接按完整域名查找
+          let domainConfig = await dbGet(
+            'SELECT subdomain, root_domain, origin_port FROM domain_configs WHERE (subdomain || "." || root_domain) = ? AND origin_port IS NOT NULL',
+            [hostname]
           );
+
+          // 2. 如果没匹配到，尝试按泛域名规则匹配（如果之后支持泛域名配置的话，目前先按精确匹配逻辑优化）
+          // ... 现有逻辑已足够处理目前 domain_configs 里的数据结构
 
           // 如果匹配到了配置，且目的端口不是当前面板端口，则执行反代
           if (domainConfig && domainConfig.origin_port && domainConfig.origin_port !== PORT) {
-            console.log(`[Proxy] Forwarding ${host} -> localhost:${domainConfig.origin_port}`);
+            console.log(`[Proxy] [${new Date().toISOString()}] ${hostname} -> 127.0.0.1:${domainConfig.origin_port} (${req.method} ${req.url})`);
             return proxy.web(req, res, { target: `http://127.0.0.1:${domainConfig.origin_port}` });
           }
         } catch (e) {
