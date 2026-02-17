@@ -104,7 +104,7 @@
         </div>
       </el-header>
 
-      <el-main>
+      <el-main :style="{ padding: isMobile ? '10px' : '20px' }">
         <router-view v-slot="{ Component }">
           <keep-alive>
             <component :is="Component" />
@@ -239,9 +239,6 @@ function handleLogout() {
 }
 
 @media (max-width: 768px) {
-  .el-main {
-    padding: 10px;
-  }
   .page-title {
     font-size: 16px;
   }

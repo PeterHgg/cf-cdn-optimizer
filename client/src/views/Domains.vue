@@ -12,6 +12,15 @@
       </template>
 
       <el-table :data="domains" v-loading="loading" stripe>
+        <el-table-column type="expand" v-if="isMobile">
+          <template #default="{ row }">
+            <el-descriptions :column="1" size="small" border style="margin: 10px">
+              <el-descriptions-item label="回退源">{{ row.fallback_origin }}</el-descriptions-item>
+              <el-descriptions-item label="优选 IP">{{ row.optimized_ip || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="创建时间">{{ row.created_at }}</el-descriptions-item>
+            </el-descriptions>
+          </template>
+        </el-table-column>
         <el-table-column prop="id" label="ID" width="50" v-if="!isMobile" />
         <el-table-column label="完整域名" min-width="150">
           <template #default="{ row }">
