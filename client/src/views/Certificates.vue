@@ -48,22 +48,40 @@
     <!-- 生成证书弹窗 -->
     <el-dialog v-model="showGenerate" title="生成 Cloudflare Origin CA 证书" :width="isMobile ? '95%' : '500px'">
       <el-form :model="genForm" :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
-        <el-form-item label="域名列表" required>
+        <el-form-item label="选择域名" required>
+          <el-select
+            v-model="genForm.selectedZone"
+            placeholder="请选择 Cloudflare 域名"
+            filterable
+            style="width: 100%"
+            :loading="loadingZones"
+            @change="handleZoneChange"
+          >
+            <el-option
+              v-for="zone in zoneOptions"
+              :key="zone.id"
+              :label="zone.name"
+              :value="zone.id"
+            />
+          </el-select>
+        </el-option>
+        <el-form-item label="包含域名" required>
           <el-input
-            v-model="genForm.domains"
+            v-model="genForm.domainsDisplay"
             type="textarea"
-            :rows="4"
-            placeholder="请输入域名，每行一个&#10;例如:&#10;example.com&#10;*.example.com"
+            :rows="3"
+            readonly
+            placeholder="选择域名后自动生成"
           />
         </el-form-item>
         <el-alert type="info" :closable="false" style="margin-bottom: 20px">
-          证书有效期为 15 年。Cloudflare 将自动生成私钥。
+          系统将自动生成 <strong>15 年</strong> 有效期的证书，包含所选域名的 <strong>主域名</strong> 和 <strong>泛域名 (*.domain)</strong>。
         </el-alert>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="showGenerate = false">取消</el-button>
-          <el-button type="primary" @click="generateCert" :loading="generating">生成</el-button>
+          <el-button type="primary" @click="generateCert" :loading="generating" :disabled="!genForm.selectedZone">确认生成</el-button>
         </span>
       </template>
     </el-dialog>
@@ -141,8 +159,12 @@ const generating = ref(false)
 const importing = ref(false)
 const currentCert = ref(null)
 
+const zoneOptions = ref([])
+const loadingZones = ref(false)
+
 const genForm = ref({
-  domains: ''
+  selectedZone: '',
+  domainsDisplay: ''
 })
 
 const importForm = ref({
@@ -173,10 +195,34 @@ async function loadCerts() {
   }
 }
 
+async function loadZones() {
+  loadingZones.value = true
+  try {
+    const res = await api.get('/cloudflare/zones')
+    if (res.data.success) {
+      zoneOptions.value = res.data.data.map(z => ({
+        id: z.id,
+        name: z.name
+      }))
+    }
+  } catch (error) {
+    console.error('加载域名列表失败:', error)
+  } finally {
+    loadingZones.value = false
+  }
+}
+
+function handleZoneChange(zoneId) {
+  const zone = zoneOptions.value.find(z => z.id === zoneId)
+  if (zone) {
+    genForm.value.domainsDisplay = `${zone.name}\n*.${zone.name}`
+  }
+}
+
 async function generateCert() {
-  const domains = genForm.value.domains.split('\n').map(d => d.trim()).filter(d => d)
+  const domains = genForm.value.domainsDisplay.split('\n').map(d => d.trim()).filter(d => d)
   if (domains.length === 0) {
-    ElMessage.warning('请输入至少一个域名')
+    ElMessage.warning('请选择一个域名')
     return
   }
 
@@ -186,7 +232,8 @@ async function generateCert() {
     if (res.data.success) {
       ElMessage.success('证书生成成功')
       showGenerate.value = false
-      genForm.value.domains = ''
+      genForm.value.selectedZone = ''
+      genForm.value.domainsDisplay = ''
       loadCerts()
     }
   } catch (error) {
@@ -245,6 +292,7 @@ function copyText(text) {
 
 onMounted(() => {
   loadCerts()
+  loadZones()
 })
 </script>
 
