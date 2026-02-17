@@ -33,7 +33,8 @@
               <el-form-item label="Cloudflare Email" required>
                 <el-input
                   v-model="cfForm.email"
-                  placeholder="请输入登录邮箱 (Example: user@example.com)"
+                  type="password"
+                  :placeholder="cfConfigured.email ? '已配置（只写不读，留空不修改）' : '请输入登录邮箱 (Example: user@example.com)'"
                 />
               </el-form-item>
 
@@ -54,7 +55,8 @@
               <el-form-item label="Account ID" required>
                 <el-input
                   v-model="cfForm.accountId"
-                  placeholder="请输入 Cloudflare Account ID"
+                  type="password"
+                  :placeholder="cfConfigured.accountId ? '已配置（只写不读，留空不修改）' : '请输入 Cloudflare Account ID'"
                 />
               </el-form-item>
 
@@ -106,7 +108,7 @@
                 <el-input
                   v-model="aliyunForm.accessKeyId"
                   type="password"
-                  placeholder="请输入阿里云 Access Key ID"
+                  :placeholder="cfConfigured.aliyunKeyId ? '已配置（只写不读，留空不修改）' : '请输入阿里云 Access Key ID'"
                 />
               </el-form-item>
               <el-form-item label="Access Key Secret" required>
@@ -278,7 +280,7 @@
               CF-CDN-Optimizer
             </el-descriptions-item>
             <el-descriptions-item label="版本">
-              v0.1.50
+              v0.1.51
             </el-descriptions-item>
             <el-descriptions-item label="描述">
               Cloudflare CDN 优选加速管理平台 - 自动化管理 Cloudflare 自定义主机名 + 阿里云 DNS 优选 IP
@@ -412,8 +414,12 @@ const disablePassword = ref('')
 
 // 跟踪敏感字段是否已配置（后端返回 ******）
 const cfConfigured = ref({
+  email: false,
   apiKey: false,
   apiToken: false,
+  accountId: false,
+  zoneId: false,
+  aliyunKeyId: false,
   aliyunSecret: false
 })
 
@@ -460,14 +466,19 @@ async function loadSettings() {
     const res = await api.get('/settings')
     if (res.data.success) {
       const data = res.data.data
-      cfForm.value.email = data.cf_email || ''
-      cfForm.value.accountId = data.cf_account_id || ''
-      cfForm.value.zoneId = data.cf_zone_id || ''
 
       // 敏感字段：不填入遮罩值，只记录已配置状态
+      cfConfigured.value.email = !!data.cf_email
       cfConfigured.value.apiKey = data.cf_api_key === '******'
       cfConfigured.value.apiToken = data.cf_api_token === '******'
+      cfConfigured.value.accountId = !!data.cf_account_id
+      cfConfigured.value.zoneId = !!data.cf_zone_id
+      cfConfigured.value.aliyunKeyId = !!data.aliyun_access_key_id
       cfConfigured.value.aliyunSecret = data.aliyun_access_key_secret === '******'
+
+      cfForm.value.email = ''
+      cfForm.value.accountId = ''
+      cfForm.value.zoneId = data.cf_zone_id || ''
       cfForm.value.apiKey = ''
       cfForm.value.apiToken = ''
 
@@ -476,7 +487,7 @@ async function loadSettings() {
         zoneOptions.value = [{ id: cfForm.value.zoneId, name: cfForm.value.zoneId }]
       }
 
-      aliyunForm.value.accessKeyId = data.aliyun_access_key_id || ''
+      aliyunForm.value.accessKeyId = ''
       aliyunForm.value.accessKeySecret = ''
 
       httpsForm.value.certPath = data.panel_cert_path || ''
@@ -491,28 +502,24 @@ async function loadSettings() {
 
 // 获取 Zone 列表
 async function loadZones() {
-  if (!cfForm.value.email || (!cfForm.value.apiKey && !cfConfigured.value.apiKey)) {
-    ElMessage.warning('请先填写 Email 和 Global API Key')
+  if (!cfForm.value.email && !cfConfigured.value.email) {
+    ElMessage.warning('请先填写 Email')
+    return
+  }
+  if (!cfForm.value.apiKey && !cfConfigured.value.apiKey) {
+    ElMessage.warning('请先填写 Global API Key')
     return
   }
 
   loadingZones.value = true
   try {
-    // 如果用户填了新的 API Key，先保存
-    if (cfForm.value.apiKey) {
-      await api.put('/settings/batch', {
-        settings: {
-          cf_email: cfForm.value.email,
-          cf_api_key: cfForm.value.apiKey
-        }
-      })
-    } else {
-      // 只更新 email（API Key 已在后端保存）
-      await api.put('/settings/batch', {
-        settings: {
-          cf_email: cfForm.value.email
-        }
-      })
+    const payload = {}
+    if (cfForm.value.email) payload.cf_email = cfForm.value.email
+    if (cfForm.value.apiKey) payload.cf_api_key = cfForm.value.apiKey
+
+    // 如果填写了新信息，先保存
+    if (Object.keys(payload).length > 0) {
+      await api.put('/settings/batch', { settings: payload })
     }
 
     // 调用后端获取 Zone 列表
@@ -525,7 +532,7 @@ async function loadZones() {
       }))
 
       // 自动填充 Account ID (如果还没填)
-      if (zoneOptions.value.length > 0 && !cfForm.value.accountId) {
+      if (zoneOptions.value.length > 0 && !cfForm.value.accountId && !cfConfigured.value.accountId) {
         // 优先尝试找当前选中的 zone (如果有)
         if (cfForm.value.zoneId) {
           const currentZone = zoneOptions.value.find(z => z.id === cfForm.value.zoneId)
@@ -565,29 +572,44 @@ function handleZoneChange(val) {
 // 保存 Cloudflare 设置
 async function saveCfSettings() {
   // 验证: 必须要 Email + Key(已有或新填) 或者 Token
-  const hasNewKey = cfForm.value.apiKey
-  const hasExistingKey = cfConfigured.value.apiKey
-  const hasAuth = (cfForm.value.email && (hasNewKey || hasExistingKey)) || cfForm.value.apiToken || cfConfigured.value.apiToken
+  const hasEmail = cfForm.value.email || cfConfigured.value.email
+  const hasKey = cfForm.value.apiKey || cfConfigured.value.apiKey
+  const hasToken = cfForm.value.apiToken || cfConfigured.value.apiToken
+  const hasAuth = (hasEmail && hasKey) || hasToken
+  const hasAccount = cfForm.value.accountId || cfConfigured.value.accountId
+  const hasZone = cfForm.value.zoneId || cfConfigured.value.zoneId
 
-  if (!hasAuth || !cfForm.value.accountId || !cfForm.value.zoneId) {
+  if (!hasAuth || !hasAccount || !hasZone) {
     ElMessage.warning('请填写完整的 Cloudflare 配置')
     return
   }
 
   saving.value = true
   try {
-    const settings = {
-      cf_email: cfForm.value.email,
-      cf_account_id: cfForm.value.accountId,
-      cf_zone_id: cfForm.value.zoneId
-    }
-    // 敏感字段：只在用户填写了新值时才发送
+    const settings = {}
+    if (cfForm.value.email) settings.cf_email = cfForm.value.email
+    if (cfForm.value.accountId) settings.cf_account_id = cfForm.value.accountId
+    if (cfForm.value.zoneId) settings.cf_zone_id = cfForm.value.zoneId
     if (cfForm.value.apiKey) settings.cf_api_key = cfForm.value.apiKey
     if (cfForm.value.apiToken) settings.cf_api_token = cfForm.value.apiToken
 
+    if (Object.keys(settings).length === 0) {
+      ElMessage.info('未检测到更改')
+      return
+    }
+
     await api.put('/settings/batch', { settings })
     ElMessage.success('Cloudflare 配置已保存')
-    // 保存成功后更新已配置状态
+
+    // 保存成功后更新已配置状态并清空表单
+    if (cfForm.value.email) {
+      cfConfigured.value.email = true
+      cfForm.value.email = ''
+    }
+    if (cfForm.value.accountId) {
+      cfConfigured.value.accountId = true
+      cfForm.value.accountId = ''
+    }
     if (cfForm.value.apiKey) {
       cfConfigured.value.apiKey = true
       cfForm.value.apiKey = ''
@@ -605,24 +627,32 @@ async function saveCfSettings() {
 
 // 保存阿里云设置
 async function saveAliyunSettings() {
-  if (!aliyunForm.value.accessKeyId) {
-    ElMessage.warning('请填写 Access Key ID')
-    return
-  }
-  if (!aliyunForm.value.accessKeySecret && !cfConfigured.value.aliyunSecret) {
-    ElMessage.warning('请填写 Access Key Secret')
+  const hasKeyId = aliyunForm.value.accessKeyId || cfConfigured.value.aliyunKeyId
+  const hasSecret = aliyunForm.value.accessKeySecret || cfConfigured.value.aliyunSecret
+
+  if (!hasKeyId || !hasSecret) {
+    ElMessage.warning('请填写完整的阿里云配置')
     return
   }
 
   saving.value = true
   try {
-    const settings = {
-      aliyun_access_key_id: aliyunForm.value.accessKeyId,
-      ...(aliyunForm.value.accessKeySecret ? { aliyun_access_key_secret: aliyunForm.value.accessKeySecret } : {})
+    const settings = {}
+    if (aliyunForm.value.accessKeyId) settings.aliyun_access_key_id = aliyunForm.value.accessKeyId
+    if (aliyunForm.value.accessKeySecret) settings.aliyun_access_key_secret = aliyunForm.value.accessKeySecret
+
+    if (Object.keys(settings).length === 0) {
+      ElMessage.info('未检测到更改')
+      return
     }
 
     await api.put('/settings/batch', { settings })
     ElMessage.success('阿里云配置已保存')
+
+    if (aliyunForm.value.accessKeyId) {
+      cfConfigured.value.aliyunKeyId = true
+      aliyunForm.value.accessKeyId = ''
+    }
     if (aliyunForm.value.accessKeySecret) {
       cfConfigured.value.aliyunSecret = true
       aliyunForm.value.accessKeySecret = ''
