@@ -27,6 +27,7 @@ proxy.on('error', (err, req, res) => {
 
 // 当前运行的服务器实例（用于重启）
 let currentServer = null;
+let currentHttpServer = null; // 用于 80 端口重定向或 HTTP 模式
 
 // 自动初始化数据库
 async function initDatabase() {
@@ -85,11 +86,18 @@ async function getHttpsConfig() {
 async function startServer() {
   // 如果已有服务器在运行，先关闭
   if (currentServer) {
-    console.log('🔄 正在重启服务...');
+    console.log('🔄 正在重启 HTTPS 服务...');
     await new Promise((resolve) => {
       currentServer.close(() => resolve());
     });
     currentServer = null;
+  }
+  if (currentHttpServer) {
+    console.log('🔄 正在重启 HTTP 服务...');
+    await new Promise((resolve) => {
+      currentHttpServer.close(() => resolve());
+    });
+    currentHttpServer = null;
   }
 
   const httpsConfig = await getHttpsConfig();
@@ -116,11 +124,14 @@ async function startServer() {
             [hostname]
           );
 
-          // 2. 如果没匹配到，尝试按泛域名规则匹配（如果之后支持泛域名配置的话，目前先按精确匹配逻辑优化）
-          // ... 现有逻辑已足够处理目前 domain_configs 里的数据结构
-
           // 如果匹配到了配置，且目的端口不是当前面板端口，则执行反代
-          if (domainConfig && domainConfig.origin_port && domainConfig.origin_port !== PORT) {
+          // 在 443 模式下，通常所有匹配到的域名都需要反代
+          if (domainConfig && domainConfig.origin_port) {
+            // 如果目的端口就是当前端口，说明配置有误（死循环），跳过代理走面板逻辑
+            if (parseInt(domainConfig.origin_port) === parseInt(PORT)) {
+              return app(req, res);
+            }
+
             console.log(`[Proxy] [${new Date().toISOString()}] ${hostname} -> 127.0.0.1:${domainConfig.origin_port} (${req.method} ${req.url})`);
             return proxy.web(req, res, { target: `http://127.0.0.1:${domainConfig.origin_port}` });
           }
@@ -138,6 +149,19 @@ async function startServer() {
       console.log(`📡 服务地址: https://localhost:${PORT}`);
       console.log(`🔒 证书: ${httpsConfig.certPath}`);
     });
+
+    // 如果 HTTPS 运行在 443，则自动开启 80 端口重定向
+    if (parseInt(PORT) === 443) {
+      currentHttpServer = http.createServer((req, res) => {
+        const host = req.headers.host ? req.headers.host.split(':')[0] : '';
+        console.log(`[Redirect] HTTP -> HTTPS: ${host}${req.url}`);
+        res.writeHead(301, { "Location": "https://" + req.headers.host + req.url });
+        res.end();
+      });
+      currentHttpServer.listen(80, () => {
+        console.log(`📡 已启动 HTTP (80) -> HTTPS (443) 自动重定向`);
+      });
+    }
   } else {
     // HTTP 模式
     currentServer = http.createServer(app);
