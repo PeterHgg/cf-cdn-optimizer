@@ -6,7 +6,7 @@ const router = express.Router();
 // 获取所有优选 IP
 router.get('/', async (req, res) => {
   try {
-    const ips = await dbAll('SELECT * FROM optimized_ips ORDER BY latency ASC');
+    const ips = await dbAll('SELECT * FROM optimized_ips ORDER BY id DESC');
     res.json({ success: true, data: ips });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

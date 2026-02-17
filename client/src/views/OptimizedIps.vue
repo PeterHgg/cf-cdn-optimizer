@@ -12,7 +12,6 @@
       </template>
 
       <el-table :data="ips" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="50" v-if="!isMobile" />
         <el-table-column prop="ip_or_domain" label="IP/域名" min-width="140" show-overflow-tooltip />
         <el-table-column label="类型" width="90">
           <template #default="{ row }">
