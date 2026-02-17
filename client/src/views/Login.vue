@@ -7,38 +7,45 @@
       </div>
 
       <el-form :model="loginForm" :rules="rules" ref="formRef">
-        <el-form-item prop="username">
-          <el-input
-            v-model="loginForm.username"
-            placeholder="用户名"
-            prefix-icon="User"
-            size="large"
-            :disabled="show2FA"
-          />
-        </el-form-item>
+        <template v-if="!show2FA">
+          <el-form-item prop="username">
+            <el-input
+              v-model="loginForm.username"
+              placeholder="用户名"
+              prefix-icon="User"
+              size="large"
+            />
+          </el-form-item>
 
-        <el-form-item prop="password">
-          <el-input
-            v-model="loginForm.password"
-            type="password"
-            placeholder="密码"
-            prefix-icon="Lock"
-            size="large"
-            :disabled="show2FA"
-            @keyup.enter="handleLogin"
-          />
-        </el-form-item>
+          <el-form-item prop="password">
+            <el-input
+              v-model="loginForm.password"
+              type="password"
+              placeholder="密码"
+              prefix-icon="Lock"
+              size="large"
+              @keyup.enter="handleLogin"
+            />
+          </el-form-item>
+        </template>
 
-        <el-form-item v-if="show2FA">
-          <el-input
-            v-model="loginForm.totpCode"
-            placeholder="请输入6位验证码"
-            size="large"
-            maxlength="6"
-            @keyup.enter="handleLogin"
-            style="text-align: center; letter-spacing: 4px"
-          />
-        </el-form-item>
+        <template v-else>
+          <div style="text-align: center; margin-bottom: 20px;">
+            <el-icon size="40" color="#409eff"><Lock /></el-icon>
+            <p style="margin-top: 10px; color: #606266;">已开启两步验证，请输入验证码</p>
+          </div>
+          <el-form-item>
+            <el-input
+              v-model="loginForm.totpCode"
+              placeholder="请输入6位验证码"
+              size="large"
+              maxlength="6"
+              auto-focus
+              @keyup.enter="handleLogin"
+              style="text-align: center; letter-spacing: 4px"
+            />
+          </el-form-item>
+        </template>
 
         <el-form-item>
           <el-button
@@ -48,13 +55,13 @@
             @click="handleLogin"
             style="width: 100%"
           >
-            {{ show2FA ? '验证' : '登录' }}
+            {{ show2FA ? '验证并登录' : '登录' }}
           </el-button>
         </el-form-item>
 
         <el-form-item v-if="show2FA">
           <el-button size="large" @click="back2Login" style="width: 100%">
-            返回
+            返回重新登录
           </el-button>
         </el-form-item>
       </el-form>
