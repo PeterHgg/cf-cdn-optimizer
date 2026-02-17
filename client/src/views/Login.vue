@@ -99,7 +99,9 @@ function back2Login() {
 
 async function handleLogin() {
   try {
-    await formRef.value.validate()
+    if (!show2FA.value) {
+      await formRef.value.validate()
+    }
     loading.value = true
 
     if (show2FA.value && (!loginForm.totpCode || loginForm.totpCode.length !== 6)) {
@@ -124,7 +126,12 @@ async function handleLogin() {
       ElMessage.error(data.message || '登录失败')
     }
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || '登录失败')
+    if (error.response && error.response.data && error.response.data.requires2FA) {
+      show2FA.value = true
+      ElMessage.info('请输入两步验证码')
+    } else {
+      ElMessage.error(error.response?.data?.message || '登录失败')
+    }
   } finally {
     loading.value = false
   }
