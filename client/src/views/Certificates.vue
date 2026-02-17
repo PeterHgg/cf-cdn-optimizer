@@ -64,7 +64,7 @@
               :value="zone.id"
             />
           </el-select>
-        </el-option>
+        </el-form-item>
         <el-form-item label="包含域名" required>
           <el-input
             v-model="genForm.domainsDisplay"
