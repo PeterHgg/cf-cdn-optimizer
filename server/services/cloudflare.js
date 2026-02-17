@@ -476,18 +476,23 @@ async function createOriginCertificate(hostnames, validityDays = 5475) {
     });
 
     if (!resp.data.success) {
-      throw new Error(resp.data.errors?.[0]?.message || 'Cloudflare API error');
+      const errorMsg = resp.data.errors?.[0]?.message || 'Cloudflare API error';
+      const errorCode = resp.data.errors?.[0]?.code;
+      throw new Error(`${errorMsg}${errorCode ? ' (Code: ' + errorCode + ')' : ''}`);
     }
 
     return { success: true, data: resp.data.result };
 
   } catch (error) {
-    console.error('生成证书失败:', error);
-    // 回退策略：如果是 "method not found" 类错误，可以尝试直接 fetch
-    // 这里简化处理，直接返回错误
+    console.error('生成证书失败:', error.response?.data || error.message);
+    let message = error.message;
+    if (error.response?.data?.errors?.[0]) {
+      const cfErr = error.response.data.errors[0];
+      message = `${cfErr.message}${cfErr.code ? ' (Code: ' + cfErr.code + ')' : ''}`;
+    }
     return {
       success: false,
-      message: error.message
+      message: message
     };
   }
 }
