@@ -138,3 +138,18 @@ start.bat      # Windows 启动（会先构建前端）
 - 代码中多处使用 `process.cwd()`（而非 `__dirname`）定位运行时可写目录，适配 pkg snapshot 只读特性。
 - SQLite 默认路径：`data/database.sqlite`（可由 `DATABASE_PATH` 覆盖）。
 - 默认管理员账号由迁移脚本创建：`admin / admin123`（首次使用后应修改）。
+
+## GitHub Actions 触发规范
+
+当前工作流 [`.github/workflows/release.yml`](.github/workflows/release.yml) 仅在 `push tags: v*` 或手动 `workflow_dispatch` 时运行，不会在普通 `master` push 时自动触发。
+
+以后每次提交后如需触发自动构建，统一按以下流程执行：
+1. 提交并推送代码到 `master`
+2. 创建新的语义化版本标签（如 `v0.1.66`）
+3. 推送标签触发构建：
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+约定：不要复用已有 tag；每次发布必须使用新 tag。
