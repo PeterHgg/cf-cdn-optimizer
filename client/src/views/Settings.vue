@@ -214,6 +214,26 @@
             </template>
           </el-card>
 
+          <el-card shadow="never" style="margin-bottom: 20px">
+            <template #header>
+              <div class="card-header">
+                <span>修改用户名</span>
+              </div>
+            </template>
+
+            <el-form :model="usernameForm" :label-width="isMobile ? 'auto' : '120px'" :label-position="isMobile ? 'top' : 'right'" style="max-width: 500px">
+              <el-form-item label="当前用户名">
+                <el-input :model-value="authStore.user?.username || ''" disabled />
+              </el-form-item>
+              <el-form-item label="新用户名">
+                <el-input v-model="usernameForm.newUsername" placeholder="请输入新用户名" />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="changeUsername">修改用户名</el-button>
+              </el-form-item>
+            </el-form>
+          </el-card>
+
           <el-card shadow="never">
             <template #header>
               <div class="card-header">
@@ -335,8 +355,10 @@ import { ref, onMounted, inject } from 'vue'
 import { ElMessage } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
 import api from '@/api'
+import { useAuthStore } from '@/stores/auth'
 
 const isMobile = inject('isMobile')
+const authStore = useAuthStore()
 
 const activeTab = ref('api')
 const saving = ref(false)
@@ -394,6 +416,10 @@ const passwordForm = ref({
   oldPassword: '',
   newPassword: '',
   confirmPassword: ''
+})
+
+const usernameForm = ref({
+  newUsername: ''
 })
 
 // 阿里云权限表格数据
@@ -766,6 +792,38 @@ async function disable2FA() {
     ElMessage.error(error.response?.data?.message || '操作失败')
   } finally {
     setting2FA.value = false
+  }
+}
+
+async function changeUsername() {
+  const normalizedUsername = usernameForm.value.newUsername.trim()
+
+  if (!normalizedUsername) {
+    ElMessage.warning('请输入新用户名')
+    return
+  }
+
+  if (normalizedUsername === (authStore.user?.username || '')) {
+    ElMessage.warning('新用户名不能与当前用户名相同')
+    return
+  }
+
+  try {
+    const res = await api.post('/auth/change-username', {
+      newUsername: normalizedUsername
+    })
+
+    if (res.data.success) {
+      authStore.setAuth(res.data)
+      usernameForm.value.newUsername = ''
+      ElMessage.success('用户名修改成功')
+    }
+  } catch (error) {
+    if (error.response?.status === 409) {
+      ElMessage.error('用户名已存在，请更换后重试')
+      return
+    }
+    ElMessage.error('修改用户名失败: ' + (error.response?.data?.message || error.message))
   }
 }
 

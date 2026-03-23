@@ -7,13 +7,24 @@ const QRCode = require('qrcode');
 
 const router = express.Router();
 
-// 查询 2FA 是否已启用（不需要认证）
+// 查询 2FA 是否已启用（需要认证）
 router.get('/2fa-status', async (req, res) => {
   try {
-    const user = await dbGet('SELECT totp_enabled FROM users WHERE username = ?', ['admin']);
-    res.json({ success: true, enabled: !!(user && user.totp_enabled) });
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ success: false, message: '未授权' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret-key');
+    const user = await dbGet('SELECT totp_enabled FROM users WHERE id = ?', [decoded.id]);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: '用户不存在' });
+    }
+
+    res.json({ success: true, enabled: !!user.totp_enabled });
   } catch (error) {
-    res.json({ success: true, enabled: false });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -238,6 +249,84 @@ router.post('/change-password', async (req, res) => {
     res.json({
       success: true,
       message: '密码修改成功'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// 修改用户名
+router.post('/change-username', async (req, res) => {
+  try {
+    const { newUsername } = req.body;
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: '未授权'
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret-key');
+    const user = await dbGet('SELECT * FROM users WHERE id = ?', [decoded.id]);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: '用户不存在'
+      });
+    }
+
+    const normalizedUsername = typeof newUsername === 'string' ? newUsername.trim() : '';
+    if (!normalizedUsername) {
+      return res.status(400).json({
+        success: false,
+        message: '用户名不能为空'
+      });
+    }
+
+    if (normalizedUsername.length < 3 || normalizedUsername.length > 32) {
+      return res.status(400).json({
+        success: false,
+        message: '用户名长度需在 3-32 个字符之间'
+      });
+    }
+
+    if (normalizedUsername === user.username) {
+      return res.status(400).json({
+        success: false,
+        message: '新用户名不能与当前用户名相同'
+      });
+    }
+
+    const existingUser = await dbGet('SELECT id FROM users WHERE username = ? AND id != ?', [normalizedUsername, user.id]);
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: '用户名已存在'
+      });
+    }
+
+    await dbRun('UPDATE users SET username = ? WHERE id = ?', [normalizedUsername, user.id]);
+
+    const newToken = jwt.sign(
+      { id: user.id, username: normalizedUsername },
+      process.env.JWT_SECRET || 'default-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      message: '用户名修改成功',
+      token: newToken,
+      user: {
+        id: user.id,
+        username: normalizedUsername
+      }
     });
   } catch (error) {
     res.status(500).json({
