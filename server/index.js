@@ -10,6 +10,8 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '::';
+const PROXY_TARGET_HOST = process.env.PROXY_TARGET_HOST || '127.0.0.1';
 
 // 创建代理实例
 const proxy = httpProxy.createProxyServer({
@@ -28,6 +30,23 @@ proxy.on('error', (err, req, res) => {
 // 当前运行的服务器实例（用于重启）
 let currentServer = null;
 let currentHttpServer = null; // 用于 80 端口重定向或 HTTP 模式
+
+function extractHostname(hostHeader = '') {
+  if (!hostHeader) return '';
+  if (hostHeader.startsWith('[')) {
+    const end = hostHeader.indexOf(']');
+    if (end !== -1) return hostHeader.slice(1, end);
+  }
+  return hostHeader.split(':')[0];
+}
+
+function toUrlHost(host = '') {
+  if (!host) return host;
+  if (host.includes(':') && !host.startsWith('[')) {
+    return `[${host}]`;
+  }
+  return host;
+}
 
 // 自动初始化数据库
 async function initDatabase() {
@@ -115,8 +134,8 @@ async function startServer() {
       if (host) {
         try {
           const { dbGet } = require('./database/db');
-          // 移除端口号，获取纯域名
-          const hostname = host.split(':')[0];
+          // 移除端口号，获取纯域名（兼容 IPv6 host header）
+          const hostname = extractHostname(host);
 
           // 1. 尝试直接按完整域名查找
           let domainConfig = await dbGet(
@@ -132,8 +151,8 @@ async function startServer() {
               return app(req, res);
             }
 
-            console.log(`[Proxy] [${new Date().toISOString()}] ${hostname} -> 127.0.0.1:${domainConfig.origin_port} (${req.method} ${req.url})`);
-            return proxy.web(req, res, { target: `http://127.0.0.1:${domainConfig.origin_port}` });
+            console.log(`[Proxy] [${new Date().toISOString()}] ${hostname} -> ${PROXY_TARGET_HOST}:${domainConfig.origin_port} (${req.method} ${req.url})`);
+            return proxy.web(req, res, { target: `http://${toUrlHost(PROXY_TARGET_HOST)}:${domainConfig.origin_port}` });
           }
         } catch (e) {
           console.error('[Proxy Lookup Error]:', e.message);
@@ -144,9 +163,9 @@ async function startServer() {
       app(req, res);
     });
 
-    currentServer.listen(PORT, () => {
+    currentServer.listen(PORT, HOST, () => {
       console.log(`🚀 CF-CDN-Optimizer 服务已启动 (HTTPS)`);
-      console.log(`📡 服务地址: https://localhost:${PORT}`);
+      console.log(`📡 服务地址: https://${toUrlHost(HOST)}:${PORT}`);
       console.log(`🔒 证书: ${httpsConfig.certPath}`);
     });
 
@@ -158,16 +177,16 @@ async function startServer() {
         res.writeHead(301, { "Location": "https://" + req.headers.host + req.url });
         res.end();
       });
-      currentHttpServer.listen(80, () => {
+      currentHttpServer.listen(80, HOST, () => {
         console.log(`📡 已启动 HTTP (80) -> HTTPS (443) 自动重定向`);
       });
     }
   } else {
     // HTTP 模式
     currentServer = http.createServer(app);
-    currentServer.listen(PORT, () => {
+    currentServer.listen(PORT, HOST, () => {
       console.log(`🚀 CF-CDN-Optimizer 服务已启动 (HTTP)`);
-      console.log(`📡 服务地址: http://localhost:${PORT}`);
+      console.log(`📡 服务地址: http://${toUrlHost(HOST)}:${PORT}`);
     });
   }
 }
