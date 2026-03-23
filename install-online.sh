@@ -176,6 +176,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
+Environment=NODE_OPTIONS=--dns-result-order=ipv4first
 ExecStart=$INSTALL_DIR/cf-cdn-optimizer-linux-x64
 Restart=always
 RestartSec=5
