@@ -107,6 +107,83 @@ stop_service() {
   sleep 2
 }
 
+setup_alidns_endpoint_guard() {
+  echo -e "${BLUE}配置 AliDNS 端点健康守护...${NC}"
+
+  sudo tee /usr/local/bin/alidns-endpoint-guard.sh > /dev/null <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+HOST="alidns.cn-hangzhou.aliyuncs.com"
+IPS=("47.74.138.70" "47.241.205.161" "47.111.202.72" "101.37.132.1" "47.111.202.102")
+HOSTS_FILE="/etc/hosts"
+
+is_ok() {
+  local ip="$1"
+  curl -4 -I --connect-timeout 4 --max-time 8 --resolve "${HOST}:443:${ip}" "https://${HOST}/" >/dev/null 2>&1
+}
+
+pick_ip=""
+for ip in "${IPS[@]}"; do
+  if is_ok "$ip"; then
+    pick_ip="$ip"
+    break
+  fi
+done
+
+if [[ -z "$pick_ip" ]]; then
+  echo "[alidns-guard] no healthy IP found" >&2
+  exit 1
+fi
+
+current_ip="$(awk -v h="$HOST" '$2==h{print $1; exit}' "$HOSTS_FILE" || true)"
+if [[ "$current_ip" == "$pick_ip" ]]; then
+  echo "[alidns-guard] keep $HOST -> $pick_ip"
+  exit 0
+fi
+
+tmp_file="$(mktemp)"
+awk -v h="$HOST" '$2!=h{print}' "$HOSTS_FILE" > "$tmp_file"
+printf "%s %s\n" "$pick_ip" "$HOST" >> "$tmp_file"
+cat "$tmp_file" > "$HOSTS_FILE"
+rm -f "$tmp_file"
+
+echo "[alidns-guard] switched $HOST: ${current_ip:-none} -> $pick_ip"
+EOF
+
+  sudo chmod +x /usr/local/bin/alidns-endpoint-guard.sh
+
+  sudo tee /etc/systemd/system/alidns-endpoint-guard.service > /dev/null <<'EOF'
+[Unit]
+Description=AliDNS endpoint guard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/alidns-endpoint-guard.sh
+EOF
+
+  sudo tee /etc/systemd/system/alidns-endpoint-guard.timer > /dev/null <<'EOF'
+[Unit]
+Description=Run AliDNS endpoint guard every 5 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=alidns-endpoint-guard.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now alidns-endpoint-guard.timer
+  sudo systemctl start alidns-endpoint-guard.service || true
+
+  echo -e "${GREEN}✅ AliDNS 端点健康守护已启用${NC}"
+}
+
 # 安装功能
 do_install() {
   echo ""
@@ -189,6 +266,8 @@ EOF
   sudo systemctl daemon-reload
   sudo systemctl enable cf-cdn-optimizer
   sudo systemctl start cf-cdn-optimizer
+
+  setup_alidns_endpoint_guard
 
   # 等待服务启动
   sleep 3
@@ -288,6 +367,8 @@ do_update() {
   # 重载 systemd 并启动服务
   sudo systemctl daemon-reload
   sudo systemctl start cf-cdn-optimizer
+
+  setup_alidns_endpoint_guard
 
   # 等待服务启动
   sleep 3

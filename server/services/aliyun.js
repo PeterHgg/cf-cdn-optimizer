@@ -15,6 +15,7 @@ let aliyunClient = null;
 
 const ALIYUN_CONNECT_TIMEOUT = Number(process.env.ALIYUN_CONNECT_TIMEOUT || 10000);
 const ALIYUN_READ_TIMEOUT = Number(process.env.ALIYUN_READ_TIMEOUT || 20000);
+const ALIYUN_DNS_ENDPOINT = process.env.ALIYUN_DNS_ENDPOINT || 'alidns.aliyuncs.com';
 
 /**
  * 获取设置值（优先数据库，回退环境变量）
@@ -46,7 +47,7 @@ async function getClient() {
   const config = new OpenApi.Config({
     accessKeyId,
     accessKeySecret,
-    endpoint: 'alidns.cn-hangzhou.aliyuncs.com',
+    endpoint: ALIYUN_DNS_ENDPOINT,
     connectTimeout: ALIYUN_CONNECT_TIMEOUT,
     readTimeout: ALIYUN_READ_TIMEOUT
   });
