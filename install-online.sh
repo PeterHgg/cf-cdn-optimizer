@@ -15,14 +15,25 @@ NC='\033[0m'
 get_latest_version() {
   curl -s https://api.github.com/repos/PeterHgg/cf-cdn-optimizer/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
 }
+
+# 优先使用 /releases/latest/download 避免 API 限流导致版本探测失败
+REPO="PeterHgg/cf-cdn-optimizer"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/cf-cdn-optimizer-linux-x64.tar.gz"
 VERSION=$(get_latest_version)
 if [ -z "$VERSION" ]; then
-   echo "Failed to detect latest version, defaulting to v0.1.19"
-   VERSION="v0.1.19"
+  VERSION="latest-published"
 fi
-REPO="PeterHgg/cf-cdn-optimizer"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/cf-cdn-optimizer-linux-x64.tar.gz"
 INSTALL_DIR="$HOME/cf-cdn-optimizer"
+
+validate_archive() {
+  local file_path="$1"
+  if ! tar -tzf "$file_path" >/dev/null 2>&1; then
+    echo -e "${RED}❌ 下载文件不是有效的 tar.gz 包${NC}"
+    echo -e "${YELLOW}可能原因：GitHub 返回了错误页面（如限流/404），或最新 release 产物尚未生成${NC}"
+    rm -f "$file_path"
+    exit 1
+  fi
+}
 
 # 显示 Banner
 show_banner() {
@@ -133,6 +144,7 @@ do_install() {
       exit 1
     }
   fi
+  validate_archive "$TEMP_FILE"
   echo -e "${GREEN}✅ 下载完成${NC}"
 
   echo -e "${BLUE}解压文件...${NC}"
@@ -258,6 +270,7 @@ do_update() {
       exit 1
     }
   fi
+  validate_archive "$TEMP_FILE"
   echo -e "${GREEN}✅ 下载完成${NC}"
 
   echo -e "${BLUE}解压文件...${NC}"
