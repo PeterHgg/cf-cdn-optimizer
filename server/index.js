@@ -6,7 +6,14 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const httpProxy = require('http-proxy');
+const dns = require('dns');
 require('dotenv').config();
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (e) {
+  console.warn('⚠️ 无法设置 DNS 解析顺序为 ipv4first:', e.message);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
