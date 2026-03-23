@@ -30,8 +30,7 @@
               <el-form-item label="Cloudflare Email" required>
                 <el-input
                   v-model="cfForm.email"
-                  type="password"
-                  :placeholder="cfConfigured.email ? '已配置（只写不读，留空不修改）' : '请输入登录邮箱 (Example: user@example.com)'"
+                  :placeholder="'请输入登录邮箱 (Example: user@example.com)'"
                 />
               </el-form-item>
 
@@ -41,6 +40,9 @@
                     v-model="cfForm.apiKey"
                     type="password"
                     :placeholder="cfConfigured.apiKey ? '已配置（只写不读，留空不修改）' : '请输入 Global API Key'"
+                    @copy.prevent
+                    @cut.prevent
+                    @contextmenu.prevent
                   />
                 </div>
                 <div class="form-tip">系统将自动发现您的 Account ID 和 Zone ID。</div>
@@ -71,8 +73,7 @@
               <el-form-item label="Access Key ID" required>
                 <el-input
                   v-model="aliyunForm.accessKeyId"
-                  type="password"
-                  :placeholder="cfConfigured.aliyunKeyId ? '已配置（只写不读，留空不修改）' : '请输入阿里云 Access Key ID'"
+                  :placeholder="'请输入阿里云 Access Key ID'"
                 />
               </el-form-item>
               <el-form-item label="Access Key Secret" required>
@@ -80,6 +81,9 @@
                   v-model="aliyunForm.accessKeySecret"
                   type="password"
                   :placeholder="cfConfigured.aliyunSecret ? '已配置（只写不读，留空不修改）' : '请输入阿里云 Access Key Secret'"
+                  @copy.prevent
+                  @cut.prevent
+                  @contextmenu.prevent
                 />
               </el-form-item>
               <el-form-item>
@@ -444,7 +448,7 @@ async function loadSettings() {
       cfConfigured.value.aliyunKeyId = !!data.aliyun_access_key_id
       cfConfigured.value.aliyunSecret = data.aliyun_access_key_secret === '******'
 
-      cfForm.value.email = ''
+      cfForm.value.email = data.cf_email || ''
       cfForm.value.accountId = ''
       cfForm.value.zoneId = data.cf_zone_id || ''
       cfForm.value.apiKey = ''
@@ -455,7 +459,7 @@ async function loadSettings() {
         zoneOptions.value = [{ id: cfForm.value.zoneId, name: cfForm.value.zoneId }]
       }
 
-      aliyunForm.value.accessKeyId = ''
+      aliyunForm.value.accessKeyId = data.aliyun_access_key_id || ''
       aliyunForm.value.accessKeySecret = ''
 
       httpsForm.value.certPath = data.panel_cert_path || ''
@@ -570,7 +574,6 @@ async function saveCfSettings() {
     // 保存成功后更新已配置状态并清空表单
     if (cfForm.value.email) {
       cfConfigured.value.email = true
-      cfForm.value.email = ''
     }
     if (cfForm.value.accountId) {
       cfConfigured.value.accountId = true
@@ -620,7 +623,6 @@ async function saveAliyunSettings() {
 
     if (aliyunForm.value.accessKeyId) {
       cfConfigured.value.aliyunKeyId = true
-      aliyunForm.value.accessKeyId = ''
     }
     if (aliyunForm.value.accessKeySecret) {
       cfConfigured.value.aliyunSecret = true
